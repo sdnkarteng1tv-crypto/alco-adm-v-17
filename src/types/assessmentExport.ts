@@ -217,8 +217,14 @@ export interface NormalizedAssessmentDocument {
   signoff: NormalizedAssessmentSignoff;
 }
 
+export type AssessmentDocumentProjection =
+  | 'COMPLETE'
+  | 'STUDENT_INSTRUMENT'
+  | 'SCORING_GUIDE';
+
 export interface AssessmentExportOptions {
   documentDate?: string;
   documentMode?: DocumentMode;
+  projection?: AssessmentDocumentProjection;
   skipDownload?: boolean;
 }

@@ -109,6 +109,7 @@ export const AssessmentPlanManager: React.FC<AssessmentPlanManagerProps> = ({
   const [formTpIds, setFormTpIds] = useState<string[]>([]); // INITIAL SELECTION EMPTY!
   const [formCriterionIds, setFormCriterionIds] = useState<string[]>([]);
   const [formInstruments, setFormInstruments] = useState<AssessmentInstrumentRef[]>([]);
+  const [formRequestedTotalItems, setFormRequestedTotalItems] = useState<number | undefined>(undefined);
   const [aliasNotification, setAliasNotification] = useState<string | null>(null);
 
   // Available Objectives (Merdeka TPs or K13 KDs)
@@ -199,6 +200,7 @@ export const AssessmentPlanManager: React.FC<AssessmentPlanManagerProps> = ({
     setFormTpIds(initialTpIds);
     setFormInstruments(initialInstruments);
     setFormCriterionIds(initialCriterionIds);
+    setFormRequestedTotalItems(undefined);
     setEditingPlan(newPlan);
     setAliasNotification(null);
     setIsModalOpen(true);
@@ -313,6 +315,7 @@ export const AssessmentPlanManager: React.FC<AssessmentPlanManagerProps> = ({
     setFormTpIds(plan.tpIds || []);
     setFormCriterionIds(plan.criterionIds || []);
     setFormInstruments(plan.instruments || []);
+    setFormRequestedTotalItems(plan.requestedTotalItems);
     setAliasNotification(null);
     setIsModalOpen(true);
   };
@@ -406,6 +409,7 @@ export const AssessmentPlanManager: React.FC<AssessmentPlanManagerProps> = ({
     tpIds: formTpIds,
     criterionIds: formCriterionIds,
     instruments: formInstruments,
+    requestedTotalItems: formRequestedTotalItems,
     displayLabel: formAlias,
     customTimingLabel: formCustomTiming,
     customScopeLabel: formCustomScope,
@@ -729,7 +733,7 @@ export const AssessmentPlanManager: React.FC<AssessmentPlanManagerProps> = ({
                   </div>
 
                   {/* Instruments */}
-                  <div className="mt-2.5 flex flex-wrap gap-1">
+                  <div className="mt-2.5 flex flex-wrap gap-1 items-center">
                     {plan.instruments.map((inst) => (
                       <span
                         key={inst.id}
@@ -738,6 +742,11 @@ export const AssessmentPlanManager: React.FC<AssessmentPlanManagerProps> = ({
                         {inst.label || inst.type}
                       </span>
                     ))}
+                    {plan.requestedTotalItems && (
+                      <span className="text-[10px] bg-indigo-50 text-indigo-700 font-bold border border-indigo-200 px-2 py-0.5 rounded-md">
+                        {plan.requestedTotalItems} Soal
+                      </span>
+                    )}
                   </div>
 
                   {/* KKTP Info */}
@@ -1095,6 +1104,75 @@ export const AssessmentPlanManager: React.FC<AssessmentPlanManagerProps> = ({
                     </label>
                   ))}
                 </div>
+
+                {formInstruments.some((i) => i.type === 'WRITTEN_TEST') && (
+                  <div className="mt-2.5 p-3 bg-indigo-50/80 border border-indigo-200 rounded-xl space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="font-semibold text-slate-800 text-xs flex items-center gap-1.5">
+                        <span>Jumlah Soal (Tes Tertulis)</span>
+                        <span className="text-[10px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-medium border border-indigo-200">
+                          Konfigurasi Butir
+                        </span>
+                      </label>
+                      <span className="text-[11px] text-indigo-900 font-medium">
+                        {formRequestedTotalItems !== undefined
+                          ? `${formRequestedTotalItems} butir soal`
+                          : 'Default: proporsional terhadap TP'}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs text-slate-600 font-medium">Jumlah:</span>
+                        <input
+                          type="number"
+                          min="1"
+                          max="100"
+                          placeholder="20"
+                          value={formRequestedTotalItems !== undefined ? formRequestedTotalItems : ''}
+                          onChange={(e) => {
+                            const val = e.target.value.trim();
+                            if (val === '') {
+                              setFormRequestedTotalItems(undefined);
+                            } else {
+                              const num = parseInt(val, 10);
+                              setFormRequestedTotalItems(isNaN(num) ? undefined : num);
+                            }
+                          }}
+                          className="w-24 bg-white border border-slate-300 rounded-lg px-2.5 py-1 text-xs text-slate-800 font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        />
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="text-[11px] text-slate-500">Preset:</span>
+                        {[5, 10, 15, 20, 25].map((preset) => (
+                          <button
+                            key={preset}
+                            type="button"
+                            onClick={() => setFormRequestedTotalItems(preset)}
+                            className={`px-2 py-0.5 text-[11px] font-bold rounded-md border transition-colors ${
+                              formRequestedTotalItems === preset
+                                ? 'bg-indigo-600 text-white border-indigo-600'
+                                : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                            }`}
+                          >
+                            {preset}
+                          </button>
+                        ))}
+                        {formRequestedTotalItems !== undefined && (
+                          <button
+                            type="button"
+                            onClick={() => setFormRequestedTotalItems(undefined)}
+                            className="text-[11px] text-slate-500 hover:text-slate-800 underline ml-1"
+                          >
+                            Reset
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <p className="text-[10px] text-slate-500">
+                      Rencana butir soal akan diteruskan tepat sejumlah target ke kisi-kisi dan generator instrumen.
+                    </p>
+                  </div>
+                )}
               </div>
 
               {/* Validation Box */}

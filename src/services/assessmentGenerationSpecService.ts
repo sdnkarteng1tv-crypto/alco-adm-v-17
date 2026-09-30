@@ -460,6 +460,7 @@ export function resolveAssessmentGenerationSpec(
     evidenceRecommendations,
     plannedInstrumentTypes,
     sourceContext,
+    requestedTotalItems: assessmentPlan?.requestedTotalItems,
     resolution: {
       status,
       issues,

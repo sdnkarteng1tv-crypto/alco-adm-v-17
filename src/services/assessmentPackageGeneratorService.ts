@@ -712,8 +712,17 @@ ${sourceMaterials.map((s, i) => `[Sumber ${i + 1}: ${s.title}] ${s.content}`).jo
     : ''
 }
 
-DAFTAR UNIT YANG WAJIB DIGENERASI (${contract.units.length} UNIT):
+DAFTAR UNIT YANG WAJIB DIGENERASI (${contract.units.length} UNIT, TOTAL ${contract.units.reduce((s, u) => s + (u.requiredCount || 1), 0)} HASIL):
 ${JSON.stringify(contract.units, null, 2)}
+
+${
+  contract.units.some((u) => u.allocationUnit === 'ITEM' && (u.requiredCount || 1) > 1) ||
+  contract.units.reduce((s, u) => s + (u.requiredCount || 1), 0) > contract.units.length
+    ? `INSTRUKSI JUMLAH BUTIR SOAL SANGAT PENTING:
+Total butir/soal yang wajib dihasilkan adalah TEPAT ${contract.units.reduce((s, u) => s + (u.requiredCount || 1), 0)} butir (sesuai requiredCount pada masing-masing unit).
+Hasilkan setiap butir sebagai objek terpisah di dalam JSON array keluaran dengan coverageUnitId yang bersangkutan. JANGAN hanya menghasilkan 1 soal!`
+    : ''
+}
 
 Hasilkan JSON array dari objek GeneratedAssessmentUnit yang mencakup setiap unit di atas sesuai requiredCount masing-masing.`;
 

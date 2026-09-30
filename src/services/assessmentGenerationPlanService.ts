@@ -202,7 +202,13 @@ export function resolveAssessmentGenerationPlan(
   }
 
   // 2. Validasi Constraints & Pertahankan Input Guru (Preserve Invalid Input)
-  const assemblyMode = params.constraints?.assemblyMode === 'TEACHER_DEFINED'
+  const requestedTotalItems = params.constraints?.requestedTotalItems !== undefined
+    ? params.constraints.requestedTotalItems
+    : spec.requestedTotalItems;
+
+  const assemblyMode = params.constraints?.assemblyMode
+    ? params.constraints.assemblyMode
+    : requestedTotalItems !== undefined
     ? 'TEACHER_DEFINED'
     : 'AUTO_RECOMMENDED';
 
@@ -221,7 +227,6 @@ export function resolveAssessmentGenerationPlan(
     }
   }
 
-  const requestedTotalItems = params.constraints?.requestedTotalItems;
   if (requestedTotalItems !== undefined) {
     if (
       typeof requestedTotalItems !== 'number' ||

@@ -69,6 +69,7 @@ import { assessmentRegenerationService } from '../../services/assessmentRegenera
 import { assessmentRegenerationEligibilityService } from '../../services/assessmentRegenerationEligibilityService';
 import { validateGeneratedAssessment } from '../../services/assessmentValidationService';
 import { exportAssessmentDocx, exportAssessmentPdf, createAssessmentPreviewModel } from '../../services/documentEngine/assessmentExportService';
+import { AssessmentDocumentProjection } from '../../types/assessmentExport';
 import { AssessmentDocumentPreview } from './AssessmentDocumentPreview';
 import { DocumentGenerationContext } from '../../services/documentEngine/types';
 import { RefreshCw, AlertOctagon, Info, Printer, Eye } from 'lucide-react';
@@ -646,7 +647,7 @@ export const AssessmentPackageBuilder: React.FC<AssessmentPackageBuilderProps> =
   };
 
   // 9C.8 Document / Export Integration
-  const handleExportDocx = async () => {
+  const handleExportDocx = async (projection: AssessmentDocumentProjection = 'COMPLETE') => {
     if (!activePackage || activePackage.workflowStatus !== 'SIAP') return;
     setIsExportingDocx(true);
     setGenerationError(null);
@@ -664,7 +665,7 @@ export const AssessmentPackageBuilder: React.FC<AssessmentPackageBuilderProps> =
         activeAssessmentPackageId: activePackage.id,
         documentMode: 'data',
       };
-      await exportAssessmentDocx(context, { documentMode: 'data' });
+      await exportAssessmentDocx(context, { documentMode: 'data', projection });
     } catch (err: any) {
       console.error('Export DOCX error:', err);
       setGenerationError(err.message || 'Gagal mengekspor dokumen Word (.docx).');
@@ -673,7 +674,7 @@ export const AssessmentPackageBuilder: React.FC<AssessmentPackageBuilderProps> =
     }
   };
 
-  const handleExportPdf = async () => {
+  const handleExportPdf = async (projection: AssessmentDocumentProjection = 'COMPLETE') => {
     if (!activePackage || activePackage.workflowStatus !== 'SIAP') return;
     setIsExportingPdf(true);
     setGenerationError(null);
@@ -691,7 +692,7 @@ export const AssessmentPackageBuilder: React.FC<AssessmentPackageBuilderProps> =
         activeAssessmentPackageId: activePackage.id,
         documentMode: 'data',
       };
-      await exportAssessmentPdf(context, { documentMode: 'data' });
+      await exportAssessmentPdf(context, { documentMode: 'data', projection });
     } catch (err: any) {
       console.error('Export PDF error:', err);
       setGenerationError(err.message || 'Gagal mencetak dokumen PDF.');
@@ -3454,6 +3455,10 @@ export const AssessmentPackageBuilder: React.FC<AssessmentPackageBuilderProps> =
                         model={previewModel}
                         workflowStatus={activePackage.workflowStatus}
                         needsReview={activePackage.needsReview}
+                        onExportDocx={handleExportDocx}
+                        onExportPdf={handleExportPdf}
+                        isExportingDocx={isExportingDocx}
+                        isExportingPdf={isExportingPdf}
                         onRegenerateTarget={handleRegenerateTarget}
                         activeRegeneration={activeRegeneration}
                         feedback={regenerationFeedback}

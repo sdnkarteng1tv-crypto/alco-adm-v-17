@@ -30,6 +30,7 @@ import {
   NormalizedAssessmentScoringGuide,
   NormalizedAssessmentRubric,
   AssessmentExportOptions,
+  AssessmentDocumentProjection,
   TPItem,
   K13Analysis,
   AssessmentCriterion,
@@ -1284,10 +1285,11 @@ function createNormalizedAssessmentSignoffBlock(
 }
 
 /**
- * DOCX Renderer: Produces official DOCX from normalized assessment document model.
+ * DOCX Renderer: Produces official DOCX from normalized assessment document model according to selected projection.
  */
 export async function renderAssessmentDocx(
-  model: NormalizedAssessmentDocument
+  model: NormalizedAssessmentDocument,
+  projection: AssessmentDocumentProjection = 'COMPLETE'
 ): Promise<Blob> {
   const isBlank = model.metadata.isBlankMode;
   const docChildren: any[] = [];
@@ -1300,125 +1302,632 @@ export async function renderAssessmentDocx(
     extraIdentityRows.push(['Tanggal Dokumen', `: ${model.metadata.formattedDocumentDate}`]);
   }
 
-  // Header & Identity
-  docChildren.push(
-    ...createAssessmentDocumentHeader(model.metadata.title, model.metadata.subTitle)
-  );
-  docChildren.push(
-    createNormalizedAssessmentIdentityTable(model.metadata, extraIdentityRows)
-  );
-  docChildren.push(new Paragraph({ spacing: { after: 240 } }));
+  if (projection === 'STUDENT_INSTRUMENT') {
+    // ==========================================
+    // PROJECTION: LEMBAR SOAL / INSTRUMEN SISWA
+    // ==========================================
+    const studentHeaderTitle = model.instruments.list.every((i) => i.type === 'WRITTEN_TEST')
+      ? 'LEMBAR SOAL ASESMEN'
+      : model.instruments.list.every((i) => i.type === 'PERFORMANCE' || i.type === 'PROJECT' || i.type === 'PRODUCT')
+      ? 'LEMBAR TUGAS & INSTRUMEN SISWA'
+      : 'LEMBAR SOAL & INSTRUMEN ASESMEN';
 
-  // SECTION I: Kisi-Kisi
-  docChildren.push(createAssessmentSectionHeading(model.kisiKisi.title));
+    docChildren.push(
+      ...createAssessmentDocumentHeader(studentHeaderTitle, model.metadata.subTitle)
+    );
 
-  const kisiKisiTableRows: TableRow[] = [
-    new TableRow({
-      children: [
-        createAssessmentTableHeaderCell('No', 8),
-        createAssessmentTableHeaderCell('Tujuan Pembelajaran / KD', 36, AlignmentType.LEFT),
-        createAssessmentTableHeaderCell('Indikator Asesmen', 26, AlignmentType.LEFT),
-        createAssessmentTableHeaderCell('Materi / Lingkup', 15, AlignmentType.LEFT),
-        createAssessmentTableHeaderCell('Bentuk', 15),
-      ],
-    }),
-    ...model.kisiKisi.rows.map(
-      (r) =>
+    // Student Header Table
+    const studentHeaderTable = new Table({
+      width: { size: 100, type: WidthType.PERCENTAGE },
+      borders: {
+        top: { style: BorderStyle.SINGLE, size: 4, color: 'CBD5E1' },
+        bottom: { style: BorderStyle.SINGLE, size: 4, color: 'CBD5E1' },
+        left: { style: BorderStyle.SINGLE, size: 4, color: 'CBD5E1' },
+        right: { style: BorderStyle.SINGLE, size: 4, color: 'CBD5E1' },
+        insideHorizontal: { style: BorderStyle.NONE },
+        insideVertical: { style: BorderStyle.SINGLE, size: 4, color: 'CBD5E1' },
+      },
+      rows: [
         new TableRow({
           children: [
-            createAssessmentTableDataCell(String(r.no), 8, AlignmentType.CENTER),
-            createAssessmentTableDataCell(r.tpCodeAndStatement, 36),
-            createAssessmentTableDataCell(r.indicator, 26),
-            createAssessmentTableDataCell(r.material, 15),
-            createAssessmentTableDataCell(r.instrumentType, 15, AlignmentType.CENTER),
+            new TableCell({
+              width: { size: 50, type: WidthType.PERCENTAGE },
+              margins: { top: 80, bottom: 80, left: 120, right: 120 },
+              children: [
+                new Paragraph({
+                  children: [
+                    new TextRun({ text: 'Satuan Pendidikan : ', bold: true, size: FONT_SIZE_DOCX_TABLE, font: ASSESSMENT_DOCX_FONT }),
+                    new TextRun({ text: model.metadata.schoolName || '-', size: FONT_SIZE_DOCX_TABLE, font: ASSESSMENT_DOCX_FONT }),
+                  ],
+                  spacing: { after: 40 },
+                }),
+                new Paragraph({
+                  children: [
+                    new TextRun({ text: 'Mata Pelajaran    : ', bold: true, size: FONT_SIZE_DOCX_TABLE, font: ASSESSMENT_DOCX_FONT }),
+                    new TextRun({ text: model.metadata.subject || '-', size: FONT_SIZE_DOCX_TABLE, font: ASSESSMENT_DOCX_FONT }),
+                  ],
+                  spacing: { after: 40 },
+                }),
+                new Paragraph({
+                  children: [
+                    new TextRun({ text: 'Kelas / Semester  : ', bold: true, size: FONT_SIZE_DOCX_TABLE, font: ASSESSMENT_DOCX_FONT }),
+                    new TextRun({ text: `${model.metadata.grade || '-'} / ${model.metadata.semester || '-'}`, size: FONT_SIZE_DOCX_TABLE, font: ASSESSMENT_DOCX_FONT }),
+                  ],
+                  spacing: { after: 40 },
+                }),
+                new Paragraph({
+                  children: [
+                    new TextRun({ text: 'Tahun Ajaran      : ', bold: true, size: FONT_SIZE_DOCX_TABLE, font: ASSESSMENT_DOCX_FONT }),
+                    new TextRun({ text: model.metadata.academicYear || '-', size: FONT_SIZE_DOCX_TABLE, font: ASSESSMENT_DOCX_FONT }),
+                  ],
+                }),
+              ],
+            }),
+            new TableCell({
+              width: { size: 50, type: WidthType.PERCENTAGE },
+              margins: { top: 80, bottom: 80, left: 120, right: 120 },
+              children: [
+                new Paragraph({
+                  children: [
+                    new TextRun({ text: 'Nama Siswa   : ', bold: true, size: FONT_SIZE_DOCX_TABLE, font: ASSESSMENT_DOCX_FONT }),
+                    new TextRun({ text: '....................................................', size: FONT_SIZE_DOCX_TABLE, font: ASSESSMENT_DOCX_FONT }),
+                  ],
+                  spacing: { after: 60 },
+                }),
+                new Paragraph({
+                  children: [
+                    new TextRun({ text: 'Nomor Absen  : ', bold: true, size: FONT_SIZE_DOCX_TABLE, font: ASSESSMENT_DOCX_FONT }),
+                    new TextRun({ text: '....................................................', size: FONT_SIZE_DOCX_TABLE, font: ASSESSMENT_DOCX_FONT }),
+                  ],
+                  spacing: { after: 60 },
+                }),
+                new Paragraph({
+                  children: [
+                    new TextRun({ text: 'Hari / Tanggal : ', bold: true, size: FONT_SIZE_DOCX_TABLE, font: ASSESSMENT_DOCX_FONT }),
+                    new TextRun({ text: '....................................................', size: FONT_SIZE_DOCX_TABLE, font: ASSESSMENT_DOCX_FONT }),
+                  ],
+                }),
+              ],
+            }),
           ],
-        })
-    ),
-  ];
+        }),
+      ],
+    });
 
-  docChildren.push(
-    new Table({
-      width: { size: 100, type: WidthType.PERCENTAGE },
-      rows: kisiKisiTableRows,
-    })
-  );
-  docChildren.push(new Paragraph({ spacing: { after: 240 } }));
+    docChildren.push(studentHeaderTable);
+    docChildren.push(new Paragraph({ spacing: { after: 160 } }));
 
-  // SECTION II: Instrumen Asesmen
-  docChildren.push(createAssessmentSectionHeading(model.instruments.title));
-
-  if (model.instruments.list.length === 0) {
+    // Petunjuk Pengerjaan
     docChildren.push(
       new Paragraph({
         children: [
           new TextRun({
-            text: isBlank
-              ? '(Kolom instrumen dapat dituliskan langsung oleh guru)'
-              : 'Belum ada instrumen yang dimuat dalam paket ini.',
-            italics: true,
-            size: FONT_SIZE_DOCX_BODY,
-            font: ASSESSMENT_DOCX_FONT,
-            color: ASSESSMENT_DOCX_BLACK,
-          }),
-        ],
-        spacing: { after: 120 },
-      })
-    );
-  }
-
-  model.instruments.list.forEach((inst, instIdx) => {
-    docChildren.push(
-      new Paragraph({
-        children: [
-          new TextRun({
-            text: `${instIdx + 1}. [${inst.typeLabel}] ${inst.title || ''}`,
+            text: 'PETUNJUK PENGERJAAN:',
             bold: true,
             size: FONT_SIZE_DOCX_BODY,
             font: ASSESSMENT_DOCX_FONT,
             color: ASSESSMENT_DOCX_BLACK,
           }),
         ],
-        spacing: { before: 140, after: 80 },
+        spacing: { before: 80, after: 40 },
+      }),
+      new Paragraph({
+        indent: { left: 360 },
+        children: [
+          new TextRun({
+            text: '1. Berdoalah sebelum mulai mengerjakan soal.\n2. Tuliskan nama, kelas, dan nomor absen Anda pada kolom identitas di atas.\n3. Bacalah setiap petunjuk dan butir soal dengan cermat dan teliti.\n4. Kerjakan soal yang Anda anggap mudah terlebih dahulu.\n5. Periksa kembali seluruh jawaban sebelum diserahkan kepada guru.',
+            size: FONT_SIZE_DOCX_TABLE,
+            font: ASSESSMENT_DOCX_FONT,
+            color: ASSESSMENT_DOCX_BLACK,
+          }),
+        ],
+        spacing: { after: 200 },
       })
     );
 
-    if (inst.instructions) {
+    // Render Student Questions & Tasks
+    if (model.instruments.list.length === 0) {
       docChildren.push(
-        createAssessmentNarrativeParagraph(`Petunjuk: ${inst.instructions}`, { italics: true })
+        new Paragraph({
+          children: [
+            new TextRun({
+              text: 'Belum ada butir soal atau tugas yang dimuat.',
+              italics: true,
+              size: FONT_SIZE_DOCX_BODY,
+              font: ASSESSMENT_DOCX_FONT,
+            }),
+          ],
+        })
       );
     }
 
-    // Specific instrument rendering
-    if (inst.type === 'WRITTEN_TEST' && inst.writtenItems) {
-      inst.writtenItems.forEach((it) => {
-        if (it.stimulus) {
-          docChildren.push(
-            createAssessmentNarrativeParagraph(`Stimulus:\n${it.stimulus}`)
-          );
-        }
-
+    model.instruments.list.forEach((inst, instIdx) => {
+      if (model.instruments.list.length > 1) {
         docChildren.push(
           new Paragraph({
             children: [
               new TextRun({
-                text: `${it.no}. ${it.prompt}`,
-                size: FONT_SIZE_DOCX_BODY,
+                text: `BAGIAN ${String.fromCharCode(65 + instIdx)}: ${inst.title || inst.typeLabel}`,
+                bold: true,
+                size: FONT_SIZE_DOCX_HEADING,
                 font: ASSESSMENT_DOCX_FONT,
-                color: ASSESSMENT_DOCX_BLACK,
               }),
             ],
-            spacing: { before: 40, after: 40 },
+            spacing: { before: 180, after: 80 },
           })
         );
+      }
 
-        if (it.options && it.options.length > 0) {
-          it.options.forEach((opt) => {
+      if (inst.instructions) {
+        docChildren.push(
+          createAssessmentNarrativeParagraph(`Petunjuk Khusus: ${inst.instructions}`, { italics: true })
+        );
+      }
+
+      if (inst.type === 'WRITTEN_TEST' && inst.writtenItems) {
+        inst.writtenItems.forEach((it) => {
+          if (it.stimulus) {
+            docChildren.push(
+              createAssessmentNarrativeParagraph(`Stimulus:\n${it.stimulus}`)
+            );
+          }
+
+          docChildren.push(
+            new Paragraph({
+              children: [
+                new TextRun({
+                  text: `${it.no}. ${it.prompt}`,
+                  size: FONT_SIZE_DOCX_BODY,
+                  font: ASSESSMENT_DOCX_FONT,
+                  color: ASSESSMENT_DOCX_BLACK,
+                }),
+              ],
+              spacing: { before: 60, after: 40 },
+            })
+          );
+
+          if (it.options && it.options.length > 0) {
+            it.options.forEach((opt) => {
+              docChildren.push(
+                new Paragraph({
+                  indent: { left: 360 },
+                  children: [
+                    new TextRun({
+                      text: `${opt.label}. ${opt.text}`,
+                      size: FONT_SIZE_DOCX_BODY,
+                      font: ASSESSMENT_DOCX_FONT,
+                      color: ASSESSMENT_DOCX_BLACK,
+                    }),
+                  ],
+                  spacing: { after: 20 },
+                })
+              );
+            });
+          } else if (it.itemType === 'SHORT_ANSWER' || it.itemType === 'ESSAY') {
             docChildren.push(
               new Paragraph({
                 indent: { left: 360 },
                 children: [
                   new TextRun({
-                    text: `${opt.label}. ${opt.text}`,
+                    text: 'Jawaban: .........................................................................................................................................................................',
+                    size: FONT_SIZE_DOCX_TABLE,
+                    font: ASSESSMENT_DOCX_FONT,
+                    color: '94A3B8',
+                  }),
+                ],
+                spacing: { before: 40, after: 60 },
+              })
+            );
+          }
+        });
+      } else if (inst.type === 'PERFORMANCE' || inst.type === 'PROJECT' || inst.type === 'PRODUCT' || inst.type === 'ASSIGNMENT') {
+        const mainText = inst.task || inst.projectBrief || inst.productBrief || inst.instructions;
+        if (mainText) {
+          docChildren.push(
+            createAssessmentNarrativeParagraph(`Tugas Siswa:\n${mainText}`)
+          );
+        }
+        const deliverable = inst.expectedDeliverable || inst.expectedProduct || inst.expectedOutput;
+        if (deliverable) {
+          docChildren.push(
+            createAssessmentNarrativeParagraph(`Ketentuan / Hasil yang Dikumpulkan: ${deliverable}`, { bold: true })
+          );
+        }
+      } else if (inst.type === 'PORTFOLIO') {
+        if (inst.evidenceRequirements && inst.evidenceRequirements.length > 0) {
+          docChildren.push(
+            new Paragraph({
+              children: [
+                new TextRun({ text: 'Dokumen / Karya yang Harus Dikumpulkan:', bold: true, size: FONT_SIZE_DOCX_BODY, font: ASSESSMENT_DOCX_FONT }),
+              ],
+              spacing: { before: 80, after: 40 },
+            })
+          );
+          inst.evidenceRequirements.forEach((ev) => {
+            docChildren.push(
+              new Paragraph({
+                indent: { left: 360 },
+                children: [new TextRun({ text: `• ${ev}`, size: FONT_SIZE_DOCX_BODY, font: ASSESSMENT_DOCX_FONT })],
+                spacing: { after: 20 },
+              })
+            );
+          });
+        }
+      } else if (inst.type === 'SELF_ASSESSMENT' || inst.type === 'PEER_ASSESSMENT') {
+        if (inst.selfPeerItems && inst.selfPeerItems.length > 0) {
+          docChildren.push(
+            new Paragraph({
+              children: [
+                new TextRun({ text: 'Pernyataan Penilaian:', bold: true, size: FONT_SIZE_DOCX_BODY, font: ASSESSMENT_DOCX_FONT }),
+              ],
+              spacing: { before: 80, after: 40 },
+            })
+          );
+          inst.selfPeerItems.forEach((it) => {
+            docChildren.push(
+              new Paragraph({
+                indent: { left: 360 },
+                children: [
+                  new TextRun({ text: `${it.no}. ${it.statement}`, size: FONT_SIZE_DOCX_BODY, font: ASSESSMENT_DOCX_FONT }),
+                ],
+                spacing: { after: 40 },
+              })
+            );
+          });
+        }
+      }
+
+      docChildren.push(new Paragraph({ spacing: { after: 120 } }));
+    });
+  } else if (projection === 'SCORING_GUIDE') {
+    // ==========================================
+    // PROJECTION: PANDUAN PENILAIAN & RUBRIK
+    // ==========================================
+    docChildren.push(
+      ...createAssessmentDocumentHeader('PANDUAN PENILAIAN & RUBRIK ASESMEN', model.metadata.subTitle)
+    );
+    docChildren.push(
+      createNormalizedAssessmentIdentityTable(model.metadata, extraIdentityRows)
+    );
+    docChildren.push(new Paragraph({ spacing: { after: 240 } }));
+
+    // SECTION I: Kunci Jawaban
+    if (model.answerKeys.list.length > 0) {
+      docChildren.push(createAssessmentSectionHeading('I. Kunci Jawaban Soal Tertulis'));
+
+      const akRows = [
+        new TableRow({
+          children: [
+            createAssessmentTableHeaderCell('No. Butir', 12),
+            createAssessmentTableHeaderCell('Bentuk Soal', 20),
+            createAssessmentTableHeaderCell('Kunci / Jawaban yang Diharapkan', 40, AlignmentType.LEFT),
+            createAssessmentTableHeaderCell('Keterangan / Penjelasan', 28, AlignmentType.LEFT),
+          ],
+        }),
+        ...model.answerKeys.list.map(
+          (ak) =>
+            new TableRow({
+              children: [
+                createAssessmentTableDataCell(String(ak.itemNumber ?? '-'), 12, AlignmentType.CENTER),
+                createAssessmentTableDataCell(ak.instrumentType, 20, AlignmentType.CENTER),
+                createAssessmentTableDataCell(ak.value || '-', 40, AlignmentType.LEFT, true),
+                createAssessmentTableDataCell(ak.notes || '-', 28),
+              ],
+            })
+        ),
+      ];
+
+      docChildren.push(
+        new Table({
+          width: { size: 100, type: WidthType.PERCENTAGE },
+          rows: akRows,
+        })
+      );
+      docChildren.push(new Paragraph({ spacing: { after: 240 } }));
+    }
+
+    // SECTION II: Pedoman Penskoran Uraian
+    if (model.scoringGuides.list.length > 0) {
+      docChildren.push(createAssessmentSectionHeading('II. Pedoman Penskoran Uraian / Non-Objektif'));
+
+      model.scoringGuides.list.forEach((sg, sgIdx) => {
+        docChildren.push(
+          new Paragraph({
+            children: [
+              new TextRun({
+                text: `${sgIdx + 1}. ${sg.title} [Skor Maksimum: ${sg.maxScore ?? '-'}]`,
+                bold: true,
+                size: FONT_SIZE_DOCX_BODY,
+                font: ASSESSMENT_DOCX_FONT,
+                color: ASSESSMENT_DOCX_BLACK,
+              }),
+            ],
+            spacing: { before: 60, after: 20 },
+          })
+        );
+        if (sg.instructions) {
+          docChildren.push(
+            createAssessmentNarrativeParagraph(sg.instructions)
+          );
+        }
+        if (sg.notes) {
+          docChildren.push(
+            createAssessmentNarrativeParagraph(`Catatan: ${sg.notes}`)
+          );
+        }
+      });
+      docChildren.push(new Paragraph({ spacing: { after: 240 } }));
+    }
+
+    // SECTION III: Rubrik Penilaian
+    if (model.rubrics.list.length > 0) {
+      docChildren.push(createAssessmentSectionHeading('III. Rubrik Penilaian Kinerja / Produk / Proyek'));
+
+      model.rubrics.list.forEach((rub, rIdx) => {
+        docChildren.push(
+          new Paragraph({
+            children: [
+              new TextRun({
+                text: `${rIdx + 1}. ${rub.title}`,
+                bold: true,
+                size: FONT_SIZE_DOCX_BODY,
+                font: ASSESSMENT_DOCX_FONT,
+                color: ASSESSMENT_DOCX_BLACK,
+              }),
+            ],
+            spacing: { before: 60, after: 60 },
+          })
+        );
+
+        const critWidth = 30;
+        const scaleWidth = Math.floor(70 / (rub.scale.length || 1));
+
+        const headerCells: TableCell[] = [
+          createAssessmentTableHeaderCell('Kriteria Penilaian', critWidth, AlignmentType.LEFT),
+          ...rub.scale.map((s) =>
+            createAssessmentTableHeaderCell(
+              s.score !== undefined ? `${s.label} (${s.score})` : s.label,
+              scaleWidth
+            )
+          ),
+        ];
+
+        const rubricTableRows = [
+          new TableRow({ children: headerCells }),
+          ...rub.criteria.map(
+            (c) =>
+              new TableRow({
+                children: [
+                  createAssessmentTableDataCell(
+                    c.weight !== undefined ? `${c.label} — Bobot: ${c.weight}` : c.label,
+                    critWidth,
+                    AlignmentType.LEFT,
+                    true
+                  ),
+                  ...c.descriptors.map((d) => createAssessmentTableDataCell(d, scaleWidth)),
+                ],
+              })
+          ),
+        ];
+
+        docChildren.push(
+          new Table({
+            width: { size: 100, type: WidthType.PERCENTAGE },
+            rows: rubricTableRows,
+          })
+        );
+        docChildren.push(new Paragraph({ spacing: { after: 160 } }));
+      });
+    }
+
+    // SECTION IV: Pedoman Observasi
+    const obsInsts = model.instruments.list.filter((i) => i.type === 'OBSERVATION' && i.observationAspects && i.observationAspects.length > 0);
+    if (obsInsts.length > 0) {
+      docChildren.push(createAssessmentSectionHeading('IV. Pedoman Observasi'));
+      obsInsts.forEach((inst) => {
+        if (inst.recordingScheme) {
+          docChildren.push(
+            createAssessmentNarrativeParagraph(`Skema Pencatatan: ${inst.recordingScheme}`)
+          );
+        }
+        if (inst.observationAspects && inst.observationAspects.length > 0) {
+          const obsRows = [
+            new TableRow({
+              children: [
+                createAssessmentTableHeaderCell('No', 10),
+                createAssessmentTableHeaderCell('Aspek Pengamatan', 45, AlignmentType.LEFT),
+                createAssessmentTableHeaderCell('Indikator Perilaku', 45, AlignmentType.LEFT),
+              ],
+            }),
+            ...inst.observationAspects.map(
+              (asp, aIdx) =>
+                new TableRow({
+                  children: [
+                    createAssessmentTableDataCell(String(aIdx + 1), 10, AlignmentType.CENTER),
+                    createAssessmentTableDataCell(asp.label, 45),
+                    createAssessmentTableDataCell(asp.indicator || '-', 45),
+                  ],
+                })
+            ),
+          ];
+          docChildren.push(
+            new Table({
+              width: { size: 100, type: WidthType.PERCENTAGE },
+              rows: obsRows,
+            })
+          );
+          docChildren.push(new Paragraph({ spacing: { after: 160 } }));
+        }
+      });
+    }
+
+    // Sign-off Block
+    docChildren.push(new Paragraph({ spacing: { after: 200 } }));
+    docChildren.push(...createNormalizedAssessmentSignoffBlock(model.signoff));
+  } else {
+    // ==========================================
+    // PROJECTION: PERANGKAT LENGKAP (COMPLETE)
+    // ==========================================
+    docChildren.push(
+      ...createAssessmentDocumentHeader(model.metadata.title, model.metadata.subTitle)
+    );
+    docChildren.push(
+      createNormalizedAssessmentIdentityTable(model.metadata, extraIdentityRows)
+    );
+    docChildren.push(new Paragraph({ spacing: { after: 240 } }));
+
+    // SECTION I: Kisi-Kisi
+    docChildren.push(createAssessmentSectionHeading(model.kisiKisi.title));
+
+    const kisiKisiTableRows: TableRow[] = [
+      new TableRow({
+        children: [
+          createAssessmentTableHeaderCell('No', 8),
+          createAssessmentTableHeaderCell('Tujuan Pembelajaran / KD', 36, AlignmentType.LEFT),
+          createAssessmentTableHeaderCell('Indikator Asesmen', 26, AlignmentType.LEFT),
+          createAssessmentTableHeaderCell('Materi / Lingkup', 15, AlignmentType.LEFT),
+          createAssessmentTableHeaderCell('Bentuk', 15),
+        ],
+      }),
+      ...model.kisiKisi.rows.map(
+        (r) =>
+          new TableRow({
+            children: [
+              createAssessmentTableDataCell(String(r.no), 8, AlignmentType.CENTER),
+              createAssessmentTableDataCell(r.tpCodeAndStatement, 36),
+              createAssessmentTableDataCell(r.indicator, 26),
+              createAssessmentTableDataCell(r.material, 15),
+              createAssessmentTableDataCell(r.instrumentType, 15, AlignmentType.CENTER),
+            ],
+          })
+      ),
+    ];
+
+    docChildren.push(
+      new Table({
+        width: { size: 100, type: WidthType.PERCENTAGE },
+        rows: kisiKisiTableRows,
+      })
+    );
+    docChildren.push(new Paragraph({ spacing: { after: 240 } }));
+
+    // SECTION II: Instrumen Asesmen
+    docChildren.push(createAssessmentSectionHeading(model.instruments.title));
+
+    if (model.instruments.list.length === 0) {
+      docChildren.push(
+        new Paragraph({
+          children: [
+            new TextRun({
+              text: isBlank
+                ? '(Kolom instrumen dapat dituliskan langsung oleh guru)'
+                : 'Belum ada instrumen yang dimuat dalam paket ini.',
+              italics: true,
+              size: FONT_SIZE_DOCX_BODY,
+              font: ASSESSMENT_DOCX_FONT,
+              color: ASSESSMENT_DOCX_BLACK,
+            }),
+          ],
+          spacing: { after: 120 },
+        })
+      );
+    }
+
+    model.instruments.list.forEach((inst, instIdx) => {
+      docChildren.push(
+        new Paragraph({
+          children: [
+            new TextRun({
+              text: `${instIdx + 1}. [${inst.typeLabel}] ${inst.title || ''}`,
+              bold: true,
+              size: FONT_SIZE_DOCX_BODY,
+              font: ASSESSMENT_DOCX_FONT,
+              color: ASSESSMENT_DOCX_BLACK,
+            }),
+          ],
+          spacing: { before: 140, after: 80 },
+        })
+      );
+
+      if (inst.instructions) {
+        docChildren.push(
+          createAssessmentNarrativeParagraph(`Petunjuk: ${inst.instructions}`, { italics: true })
+        );
+      }
+
+      if (inst.type === 'WRITTEN_TEST' && inst.writtenItems) {
+        inst.writtenItems.forEach((it) => {
+          if (it.stimulus) {
+            docChildren.push(
+              createAssessmentNarrativeParagraph(`Stimulus:\n${it.stimulus}`)
+            );
+          }
+
+          docChildren.push(
+            new Paragraph({
+              children: [
+                new TextRun({
+                  text: `${it.no}. ${it.prompt}`,
+                  size: FONT_SIZE_DOCX_BODY,
+                  font: ASSESSMENT_DOCX_FONT,
+                  color: ASSESSMENT_DOCX_BLACK,
+                }),
+              ],
+              spacing: { before: 40, after: 40 },
+            })
+          );
+
+          if (it.options && it.options.length > 0) {
+            it.options.forEach((opt) => {
+              docChildren.push(
+                new Paragraph({
+                  indent: { left: 360 },
+                  children: [
+                    new TextRun({
+                      text: `${opt.label}. ${opt.text}`,
+                      size: FONT_SIZE_DOCX_BODY,
+                      font: ASSESSMENT_DOCX_FONT,
+                      color: ASSESSMENT_DOCX_BLACK,
+                    }),
+                  ],
+                  spacing: { after: 20 },
+                })
+              );
+            });
+          }
+        });
+      } else if (inst.type === 'PERFORMANCE') {
+        if (inst.task) {
+          docChildren.push(
+            createAssessmentNarrativeParagraph(`Tugas Praktik/Kinerja: ${inst.task}`)
+          );
+        }
+        if (inst.performanceAspects && inst.performanceAspects.length > 0) {
+          docChildren.push(
+            new Paragraph({
+              children: [
+                new TextRun({
+                  text: 'Aspek yang Dinilai:',
+                  bold: true,
+                  size: FONT_SIZE_DOCX_BODY,
+                  font: ASSESSMENT_DOCX_FONT,
+                  color: ASSESSMENT_DOCX_BLACK,
+                }),
+              ],
+              spacing: { after: 40 },
+            })
+          );
+          inst.performanceAspects.forEach((asp) => {
+            let text = `- ${asp.label}${asp.description ? `: ${asp.description}` : ''}`;
+            if (asp.weight !== undefined) {
+              text += ` — Bobot: ${asp.weight}`;
+            }
+            docChildren.push(
+              new Paragraph({
+                indent: { left: 360 },
+                children: [
+                  new TextRun({
+                    text,
                     size: FONT_SIZE_DOCX_BODY,
                     font: ASSESSMENT_DOCX_FONT,
                     color: ASSESSMENT_DOCX_BLACK,
@@ -1429,190 +1938,107 @@ export async function renderAssessmentDocx(
             );
           });
         }
-      });
-    } else if (inst.type === 'PERFORMANCE') {
-      if (inst.task) {
-        docChildren.push(
-          createAssessmentNarrativeParagraph(`Tugas Praktik/Kinerja: ${inst.task}`)
-        );
-      }
-      if (inst.performanceAspects && inst.performanceAspects.length > 0) {
-        docChildren.push(
-          new Paragraph({
-            children: [
-              new TextRun({
-                text: 'Aspek yang Dinilai:',
-                bold: true,
-                size: FONT_SIZE_DOCX_BODY,
-                font: ASSESSMENT_DOCX_FONT,
-                color: ASSESSMENT_DOCX_BLACK,
-              }),
-            ],
-            spacing: { after: 40 },
-          })
-        );
-        inst.performanceAspects.forEach((asp) => {
-          let text = `- ${asp.label}${asp.description ? `: ${asp.description}` : ''}`;
-          if (asp.weight !== undefined) {
-            text += ` — Bobot: ${asp.weight}`;
-          }
+      } else if (inst.type === 'ASSIGNMENT') {
+        if (inst.expectedOutput) {
+          docChildren.push(
+            createAssessmentNarrativeParagraph(`Hasil / Luaran: ${inst.expectedOutput}`)
+          );
+        }
+      } else if (inst.type === 'PROJECT') {
+        if (inst.projectBrief) {
+          docChildren.push(
+            createAssessmentNarrativeParagraph(`Deskripsi Proyek: ${inst.projectBrief}`)
+          );
+        }
+        if (inst.expectedDeliverable) {
+          docChildren.push(
+            createAssessmentNarrativeParagraph(`Luaran Proyek: ${inst.expectedDeliverable}`)
+          );
+        }
+      } else if (inst.type === 'PRODUCT') {
+        if (inst.productBrief) {
+          docChildren.push(
+            createAssessmentNarrativeParagraph(`Spesifikasi Produk: ${inst.productBrief}`)
+          );
+        }
+        if (inst.expectedProduct) {
+          docChildren.push(
+            createAssessmentNarrativeParagraph(`Produk / Hasil yang Diharapkan: ${inst.expectedProduct}`)
+          );
+        }
+      } else if (inst.type === 'PORTFOLIO') {
+        if (inst.evidenceRequirements && inst.evidenceRequirements.length > 0) {
           docChildren.push(
             new Paragraph({
-              indent: { left: 360 },
               children: [
                 new TextRun({
-                  text,
+                  text: 'Dokumen Bukti Karya:',
+                  bold: true,
                   size: FONT_SIZE_DOCX_BODY,
                   font: ASSESSMENT_DOCX_FONT,
                   color: ASSESSMENT_DOCX_BLACK,
                 }),
               ],
-              spacing: { after: 20 },
+              spacing: { after: 40 },
             })
           );
-        });
-      }
-    } else if (inst.type === 'ASSIGNMENT') {
-      if (inst.expectedOutput) {
-        docChildren.push(
-          createAssessmentNarrativeParagraph(`Hasil / Luaran: ${inst.expectedOutput}`)
-        );
-      }
-    } else if (inst.type === 'PROJECT') {
-      if (inst.projectBrief) {
-        docChildren.push(
-          createAssessmentNarrativeParagraph(`Deskripsi Proyek: ${inst.projectBrief}`)
-        );
-      }
-      if (inst.expectedDeliverable) {
-        docChildren.push(
-          createAssessmentNarrativeParagraph(`Luaran Proyek: ${inst.expectedDeliverable}`)
-        );
-      }
-    } else if (inst.type === 'PRODUCT') {
-      if (inst.productBrief) {
-        docChildren.push(
-          createAssessmentNarrativeParagraph(`Spesifikasi Produk: ${inst.productBrief}`)
-        );
-      }
-      if (inst.expectedProduct) {
-        docChildren.push(
-          createAssessmentNarrativeParagraph(`Produk / Hasil yang Diharapkan: ${inst.expectedProduct}`)
-        );
-      }
-    } else if (inst.type === 'PORTFOLIO') {
-      if (inst.evidenceRequirements && inst.evidenceRequirements.length > 0) {
-        docChildren.push(
-          new Paragraph({
-            children: [
-              new TextRun({
-                text: 'Dokumen Bukti Karya:',
-                bold: true,
-                size: FONT_SIZE_DOCX_BODY,
-                font: ASSESSMENT_DOCX_FONT,
-                color: ASSESSMENT_DOCX_BLACK,
-              }),
-            ],
-            spacing: { after: 40 },
-          })
-        );
-        inst.evidenceRequirements.forEach((ev) => {
-          docChildren.push(
-            new Paragraph({
-              indent: { left: 360 },
-              children: [
-                new TextRun({
-                  text: `• ${ev}`,
-                  size: FONT_SIZE_DOCX_BODY,
-                  font: ASSESSMENT_DOCX_FONT,
-                  color: ASSESSMENT_DOCX_BLACK,
-                }),
-              ],
-              spacing: { after: 20 },
-            })
-          );
-        });
-      }
-    } else if (inst.type === 'OBSERVATION') {
-      if (inst.recordingScheme) {
-        docChildren.push(
-          createAssessmentNarrativeParagraph(`Skema Pencatatan: ${inst.recordingScheme}`)
-        );
-      }
-      if (inst.observationAspects && inst.observationAspects.length > 0) {
-        const obsRows = [
-          new TableRow({
-            children: [
-              createAssessmentTableHeaderCell('No', 10),
-              createAssessmentTableHeaderCell('Aspek Pengamatan', 45, AlignmentType.LEFT),
-              createAssessmentTableHeaderCell('Indikator', 45, AlignmentType.LEFT),
-            ],
-          }),
-          ...inst.observationAspects.map(
-            (asp, aIdx) =>
-              new TableRow({
+          inst.evidenceRequirements.forEach((ev) => {
+            docChildren.push(
+              new Paragraph({
+                indent: { left: 360 },
                 children: [
-                  createAssessmentTableDataCell(String(aIdx + 1), 10, AlignmentType.CENTER),
-                  createAssessmentTableDataCell(asp.label, 45),
-                  createAssessmentTableDataCell(asp.indicator || '-', 45),
+                  new TextRun({
+                    text: `• ${ev}`,
+                    size: FONT_SIZE_DOCX_BODY,
+                    font: ASSESSMENT_DOCX_FONT,
+                    color: ASSESSMENT_DOCX_BLACK,
+                  }),
                 ],
+                spacing: { after: 20 },
               })
-          ),
-        ];
-        docChildren.push(
-          new Table({
-            width: { size: 100, type: WidthType.PERCENTAGE },
-            rows: obsRows,
-          })
-        );
-      }
-    } else if (inst.type === 'ORAL_TEST' && inst.oralItems) {
-      inst.oralItems.forEach((it) => {
-        docChildren.push(
-          new Paragraph({
-            children: [
-              new TextRun({
-                text: `${it.no}. ${it.prompt}`,
-                size: FONT_SIZE_DOCX_BODY,
-                font: ASSESSMENT_DOCX_FONT,
-                color: ASSESSMENT_DOCX_BLACK,
-              }),
-            ],
-            spacing: { before: 40, after: 20 },
-          })
-        );
-        if (it.expectedResponse) {
+            );
+          });
+        }
+      } else if (inst.type === 'OBSERVATION') {
+        if (inst.recordingScheme) {
           docChildren.push(
-            new Paragraph({
-              indent: { left: 360 },
+            createAssessmentNarrativeParagraph(`Skema Pencatatan: ${inst.recordingScheme}`)
+          );
+        }
+        if (inst.observationAspects && inst.observationAspects.length > 0) {
+          const obsRows = [
+            new TableRow({
               children: [
-                new TextRun({
-                  text: `Respons yang Diharapkan: ${it.expectedResponse}`,
-                  size: FONT_SIZE_DOCX_BODY,
-                  font: ASSESSMENT_DOCX_FONT,
-                  color: ASSESSMENT_DOCX_BLACK,
-                  italics: true,
-                }),
+                createAssessmentTableHeaderCell('No', 10),
+                createAssessmentTableHeaderCell('Aspek Pengamatan', 45, AlignmentType.LEFT),
+                createAssessmentTableHeaderCell('Indikator', 45, AlignmentType.LEFT),
               ],
-              spacing: { before: 20, after: 40 },
+            }),
+            ...inst.observationAspects.map(
+              (asp, aIdx) =>
+                new TableRow({
+                  children: [
+                    createAssessmentTableDataCell(String(aIdx + 1), 10, AlignmentType.CENTER),
+                    createAssessmentTableDataCell(asp.label, 45),
+                    createAssessmentTableDataCell(asp.indicator || '-', 45),
+                  ],
+                })
+            ),
+          ];
+          docChildren.push(
+            new Table({
+              width: { size: 100, type: WidthType.PERCENTAGE },
+              rows: obsRows,
             })
           );
         }
-      });
-    } else if (inst.type === 'SELF_ASSESSMENT' || inst.type === 'PEER_ASSESSMENT') {
-      if (inst.responseScheme) {
-        docChildren.push(
-          createAssessmentNarrativeParagraph(`Skema Respon: ${inst.responseScheme}`)
-        );
-      }
-      if (inst.selfPeerItems) {
-        inst.selfPeerItems.forEach((it) => {
-          const text = it.category ? `${it.no}. ${it.statement} — ${it.category}` : `${it.no}. ${it.statement}`;
+      } else if (inst.type === 'ORAL_TEST' && inst.oralItems) {
+        inst.oralItems.forEach((it) => {
           docChildren.push(
             new Paragraph({
               children: [
                 new TextRun({
-                  text,
+                  text: `${it.no}. ${it.prompt}`,
                   size: FONT_SIZE_DOCX_BODY,
                   font: ASSESSMENT_DOCX_FONT,
                   color: ASSESSMENT_DOCX_BLACK,
@@ -1621,130 +2047,76 @@ export async function renderAssessmentDocx(
               spacing: { before: 40, after: 20 },
             })
           );
+          if (it.expectedResponse) {
+            docChildren.push(
+              new Paragraph({
+                indent: { left: 360 },
+                children: [
+                  new TextRun({
+                    text: `Respons yang Diharapkan: ${it.expectedResponse}`,
+                    size: FONT_SIZE_DOCX_BODY,
+                    font: ASSESSMENT_DOCX_FONT,
+                    color: ASSESSMENT_DOCX_BLACK,
+                    italics: true,
+                  }),
+                ],
+                spacing: { before: 20, after: 40 },
+              })
+            );
+          }
         });
+      } else if (inst.type === 'SELF_ASSESSMENT' || inst.type === 'PEER_ASSESSMENT') {
+        if (inst.responseScheme) {
+          docChildren.push(
+            createAssessmentNarrativeParagraph(`Skema Respon: ${inst.responseScheme}`)
+          );
+        }
+        if (inst.selfPeerItems) {
+          inst.selfPeerItems.forEach((it) => {
+            const text = it.category ? `${it.no}. ${it.statement} — ${it.category}` : `${it.no}. ${it.statement}`;
+            docChildren.push(
+              new Paragraph({
+                children: [
+                  new TextRun({
+                    text,
+                    size: FONT_SIZE_DOCX_BODY,
+                    font: ASSESSMENT_DOCX_FONT,
+                    color: ASSESSMENT_DOCX_BLACK,
+                  }),
+                ],
+                spacing: { before: 40, after: 20 },
+              })
+            );
+          });
+        }
       }
-    }
 
-    docChildren.push(new Paragraph({ spacing: { after: 120 } }));
-  });
-
-  // SECTION III: Kunci Jawaban
-  if (model.answerKeys.list.length > 0) {
-    docChildren.push(createAssessmentSectionHeading(model.answerKeys.title));
-
-    const akRows = [
-      new TableRow({
-        children: [
-          createAssessmentTableHeaderCell('No. Butir', 10),
-          createAssessmentTableHeaderCell('Instrumen', 20),
-          createAssessmentTableHeaderCell('Tipe Kunci', 20),
-          createAssessmentTableHeaderCell('Kunci Jawaban', 30, AlignmentType.LEFT),
-          createAssessmentTableHeaderCell('Keterangan / Penjelasan', 20, AlignmentType.LEFT),
-        ],
-      }),
-      ...model.answerKeys.list.map(
-        (ak) =>
-          new TableRow({
-            children: [
-              createAssessmentTableDataCell(String(ak.itemNumber ?? '-'), 10, AlignmentType.CENTER),
-              createAssessmentTableDataCell(ak.instrumentType, 20, AlignmentType.CENTER),
-              createAssessmentTableDataCell(ak.answerType, 20, AlignmentType.CENTER),
-              createAssessmentTableDataCell(ak.value || '-', 30, AlignmentType.LEFT, true),
-              createAssessmentTableDataCell(ak.notes || '-', 20),
-            ],
-          })
-      ),
-    ];
-
-    docChildren.push(
-      new Table({
-        width: { size: 100, type: WidthType.PERCENTAGE },
-        rows: akRows,
-      })
-    );
-    docChildren.push(new Paragraph({ spacing: { after: 240 } }));
-  }
-
-  // SECTION IV: Pedoman Penskoran
-  if (model.scoringGuides.list.length > 0) {
-    docChildren.push(createAssessmentSectionHeading(model.scoringGuides.title));
-
-    model.scoringGuides.list.forEach((sg, sgIdx) => {
-      docChildren.push(
-        new Paragraph({
-          children: [
-            new TextRun({
-              text: `${sgIdx + 1}. ${sg.title} [Skor Maks: ${sg.maxScore ?? '-'}]`,
-              bold: true,
-              size: FONT_SIZE_DOCX_BODY,
-              font: ASSESSMENT_DOCX_FONT,
-              color: ASSESSMENT_DOCX_BLACK,
-            }),
-          ],
-          spacing: { before: 60, after: 20 },
-        })
-      );
-      if (sg.instructions) {
-        docChildren.push(
-          createAssessmentNarrativeParagraph(sg.instructions)
-        );
-      }
-      if (sg.notes) {
-        docChildren.push(
-          createAssessmentNarrativeParagraph(`Catatan: ${sg.notes}`)
-        );
-      }
+      docChildren.push(new Paragraph({ spacing: { after: 120 } }));
     });
-    docChildren.push(new Paragraph({ spacing: { after: 240 } }));
-  }
 
-  // SECTION V: Rubrik Penilaian
-  if (model.rubrics.list.length > 0) {
-    docChildren.push(createAssessmentSectionHeading(model.rubrics.title));
+    // SECTION III: Kunci Jawaban
+    if (model.answerKeys.list.length > 0) {
+      docChildren.push(createAssessmentSectionHeading(model.answerKeys.title));
 
-    model.rubrics.list.forEach((rub, rIdx) => {
-      docChildren.push(
-        new Paragraph({
+      const akRows = [
+        new TableRow({
           children: [
-            new TextRun({
-              text: `${rIdx + 1}. ${rub.title}`,
-              bold: true,
-              size: FONT_SIZE_DOCX_BODY,
-              font: ASSESSMENT_DOCX_FONT,
-              color: ASSESSMENT_DOCX_BLACK,
-            }),
+            createAssessmentTableHeaderCell('No. Butir', 10),
+            createAssessmentTableHeaderCell('Instrumen', 20),
+            createAssessmentTableHeaderCell('Tipe Kunci', 20),
+            createAssessmentTableHeaderCell('Kunci Jawaban', 30, AlignmentType.LEFT),
+            createAssessmentTableHeaderCell('Keterangan / Penjelasan', 20, AlignmentType.LEFT),
           ],
-          spacing: { before: 60, after: 60 },
-        })
-      );
-
-      const numCols = rub.scale.length + 1;
-      const critWidth = 30;
-      const scaleWidth = Math.floor(70 / (rub.scale.length || 1));
-
-      const headerCells: TableCell[] = [
-        createAssessmentTableHeaderCell('Kriteria Penilaian', critWidth, AlignmentType.LEFT),
-        ...rub.scale.map((s) =>
-          createAssessmentTableHeaderCell(
-            s.score !== undefined ? `${s.label} (${s.score})` : s.label,
-            scaleWidth
-          )
-        ),
-      ];
-
-      const rubricTableRows = [
-        new TableRow({ children: headerCells }),
-        ...rub.criteria.map(
-          (c) =>
+        }),
+        ...model.answerKeys.list.map(
+          (ak) =>
             new TableRow({
               children: [
-                createAssessmentTableDataCell(
-                  c.weight !== undefined ? `${c.label} — Bobot: ${c.weight}` : c.label,
-                  critWidth,
-                  AlignmentType.LEFT,
-                  true
-                ),
-                ...c.descriptors.map((d) => createAssessmentTableDataCell(d, scaleWidth)),
+                createAssessmentTableDataCell(String(ak.itemNumber ?? '-'), 10, AlignmentType.CENTER),
+                createAssessmentTableDataCell(ak.instrumentType, 20, AlignmentType.CENTER),
+                createAssessmentTableDataCell(ak.answerType, 20, AlignmentType.CENTER),
+                createAssessmentTableDataCell(ak.value || '-', 30, AlignmentType.LEFT, true),
+                createAssessmentTableDataCell(ak.notes || '-', 20),
               ],
             })
         ),
@@ -1753,18 +2125,112 @@ export async function renderAssessmentDocx(
       docChildren.push(
         new Table({
           width: { size: 100, type: WidthType.PERCENTAGE },
-          rows: rubricTableRows,
+          rows: akRows,
         })
       );
-      docChildren.push(new Paragraph({ spacing: { after: 160 } }));
-    });
-  }
+      docChildren.push(new Paragraph({ spacing: { after: 240 } }));
+    }
 
-  // SECTION VI: Sign-off Block
-  docChildren.push(new Paragraph({ spacing: { after: 200 } }));
-  docChildren.push(
-    ...createNormalizedAssessmentSignoffBlock(model.signoff)
-  );
+    // SECTION IV: Pedoman Penskoran
+    if (model.scoringGuides.list.length > 0) {
+      docChildren.push(createAssessmentSectionHeading(model.scoringGuides.title));
+
+      model.scoringGuides.list.forEach((sg, sgIdx) => {
+        docChildren.push(
+          new Paragraph({
+            children: [
+              new TextRun({
+                text: `${sgIdx + 1}. ${sg.title} [Skor Maks: ${sg.maxScore ?? '-'}]`,
+                bold: true,
+                size: FONT_SIZE_DOCX_BODY,
+                font: ASSESSMENT_DOCX_FONT,
+                color: ASSESSMENT_DOCX_BLACK,
+              }),
+            ],
+            spacing: { before: 60, after: 20 },
+          })
+        );
+        if (sg.instructions) {
+          docChildren.push(
+            createAssessmentNarrativeParagraph(sg.instructions)
+          );
+        }
+        if (sg.notes) {
+          docChildren.push(
+            createAssessmentNarrativeParagraph(`Catatan: ${sg.notes}`)
+          );
+        }
+      });
+      docChildren.push(new Paragraph({ spacing: { after: 240 } }));
+    }
+
+    // SECTION V: Rubrik Penilaian
+    if (model.rubrics.list.length > 0) {
+      docChildren.push(createAssessmentSectionHeading(model.rubrics.title));
+
+      model.rubrics.list.forEach((rub, rIdx) => {
+        docChildren.push(
+          new Paragraph({
+            children: [
+              new TextRun({
+                text: `${rIdx + 1}. ${rub.title}`,
+                bold: true,
+                size: FONT_SIZE_DOCX_BODY,
+                font: ASSESSMENT_DOCX_FONT,
+                color: ASSESSMENT_DOCX_BLACK,
+              }),
+            ],
+            spacing: { before: 60, after: 60 },
+          })
+        );
+
+        const critWidth = 30;
+        const scaleWidth = Math.floor(70 / (rub.scale.length || 1));
+
+        const headerCells: TableCell[] = [
+          createAssessmentTableHeaderCell('Kriteria Penilaian', critWidth, AlignmentType.LEFT),
+          ...rub.scale.map((s) =>
+            createAssessmentTableHeaderCell(
+              s.score !== undefined ? `${s.label} (${s.score})` : s.label,
+              scaleWidth
+            )
+          ),
+        ];
+
+        const rubricTableRows = [
+          new TableRow({ children: headerCells }),
+          ...rub.criteria.map(
+            (c) =>
+              new TableRow({
+                children: [
+                  createAssessmentTableDataCell(
+                    c.weight !== undefined ? `${c.label} — Bobot: ${c.weight}` : c.label,
+                    critWidth,
+                    AlignmentType.LEFT,
+                    true
+                  ),
+                  ...c.descriptors.map((d) => createAssessmentTableDataCell(d, scaleWidth)),
+                ],
+              })
+          ),
+        ];
+
+        docChildren.push(
+          new Table({
+            width: { size: 100, type: WidthType.PERCENTAGE },
+            rows: rubricTableRows,
+          })
+        );
+        docChildren.push(new Paragraph({ spacing: { after: 160 } }));
+      });
+    }
+
+    // SECTION VI: Sign-off Block
+    docChildren.push(new Paragraph({ spacing: { after: 200 } }));
+    docChildren.push(
+      ...createNormalizedAssessmentSignoffBlock(model.signoff)
+    );
+  }
 
   const doc = new Document({
     sections: [
@@ -1788,10 +2254,13 @@ export async function renderAssessmentDocx(
 }
 
 /**
- * PDF Renderer: Produces official PDF from normalized assessment document model.
+ * PDF Renderer: Produces official PDF from normalized assessment document model according to projection.
  * Sibling renderer to renderAssessmentDocx; reads the exact same semantic model.
  */
-export function renderAssessmentPdf(model: NormalizedAssessmentDocument): Blob {
+export function renderAssessmentPdf(
+  model: NormalizedAssessmentDocument,
+  projection: AssessmentDocumentProjection = 'COMPLETE'
+): Blob {
   const isBlank = model.metadata.isBlankMode;
 
   const extraIdentityRows: [string, string][] = [];
@@ -1803,6 +2272,333 @@ export function renderAssessmentPdf(model: NormalizedAssessmentDocument): Blob {
   }
 
   const sections: PdfDocumentSection[] = [];
+  const builder = new PdfDocumentBuilder('portrait', 'FORMAL_NEUTRAL');
+
+  if (projection === 'STUDENT_INSTRUMENT') {
+    // ==========================================
+    // PROJECTION: LEMBAR SOAL / INSTRUMEN SISWA
+    // ==========================================
+    const studentHeaderTitle = model.instruments.list.every((i) => i.type === 'WRITTEN_TEST')
+      ? 'LEMBAR SOAL ASESMEN'
+      : model.instruments.list.every((i) => i.type === 'PERFORMANCE' || i.type === 'PROJECT' || i.type === 'PRODUCT')
+      ? 'LEMBAR TUGAS & INSTRUMEN SISWA'
+      : 'LEMBAR SOAL & INSTRUMEN ASESMEN';
+
+    builder.renderHeader(studentHeaderTitle, model.metadata.subTitle);
+
+    // Student Header Table
+    sections.push({
+      type: 'table',
+      columns: [
+        { header: 'Informasi Pembelajaran', dataKey: 'col1', width: 50, align: 'left' },
+        { header: 'Identitas Siswa', dataKey: 'col2', width: 50, align: 'left' },
+      ],
+      rows: [
+        [`Satuan Pendidikan: ${model.metadata.schoolName || '-'}`, 'Nama Siswa  : ....................................................'],
+        [`Mata Pelajaran   : ${model.metadata.subject || '-'}`, 'Nomor Absen : ....................................................'],
+        [`Kelas / Semester : ${model.metadata.grade || '-'} / ${model.metadata.semester || '-'}`, 'Hari / Tanggal: ....................................................'],
+        [`Tahun Ajaran     : ${model.metadata.academicYear || '-'}`, ''],
+      ],
+    });
+
+    sections.push({
+      type: 'paragraph',
+      text: 'PETUNJUK PENGERJAAN:',
+      bold: true,
+      spacingAfter: 1,
+    });
+    sections.push({
+      type: 'paragraph',
+      text: '1. Berdoalah sebelum mulai mengerjakan soal.\n2. Tuliskan nama, kelas, dan nomor absen Anda pada kolom identitas di atas.\n3. Bacalah setiap petunjuk dan butir soal dengan cermat dan teliti.\n4. Kerjakan soal yang Anda anggap mudah terlebih dahulu.\n5. Periksa kembali seluruh jawaban sebelum diserahkan kepada guru.',
+      spacingAfter: 3,
+    });
+
+    if (model.instruments.list.length === 0) {
+      sections.push({
+        type: 'paragraph',
+        text: 'Belum ada butir soal atau tugas yang dimuat.',
+      });
+    }
+
+    model.instruments.list.forEach((inst, instIdx) => {
+      if (model.instruments.list.length > 1) {
+        sections.push({
+          type: 'heading',
+          text: `BAGIAN ${String.fromCharCode(65 + instIdx)}: ${inst.title || inst.typeLabel}`,
+          level: 2,
+        });
+      }
+
+      if (inst.instructions) {
+        sections.push({
+          type: 'paragraph',
+          text: `Petunjuk Khusus: ${inst.instructions}`,
+          spacingAfter: 2,
+        });
+      }
+
+      if (inst.type === 'WRITTEN_TEST' && inst.writtenItems) {
+        inst.writtenItems.forEach((it) => {
+          if (it.stimulus) {
+            sections.push({
+              type: 'callout',
+              title: 'Stimulus',
+              text: it.stimulus,
+            });
+          }
+          sections.push({
+            type: 'paragraph',
+            text: `${it.no}. ${it.prompt}`,
+            bold: true,
+            spacingAfter: 2,
+          });
+
+          if (it.options && it.options.length > 0) {
+            it.options.forEach((opt) => {
+              sections.push({
+                type: 'paragraph',
+                text: `    ${opt.label}. ${opt.text}`,
+                spacingAfter: 1,
+              });
+            });
+          } else if (it.itemType === 'SHORT_ANSWER' || it.itemType === 'ESSAY') {
+            sections.push({
+              type: 'paragraph',
+              text: '    Jawaban: .........................................................................................................................................................................',
+              spacingAfter: 2,
+            });
+          }
+        });
+      } else if (inst.type === 'PERFORMANCE' || inst.type === 'PROJECT' || inst.type === 'PRODUCT' || inst.type === 'ASSIGNMENT') {
+        const mainText = inst.task || inst.projectBrief || inst.productBrief || inst.instructions;
+        if (mainText) {
+          sections.push({
+            type: 'paragraph',
+            text: `Tugas Siswa:\n${mainText}`,
+            spacingAfter: 2,
+          });
+        }
+        const deliverable = inst.expectedDeliverable || inst.expectedProduct || inst.expectedOutput;
+        if (deliverable) {
+          sections.push({
+            type: 'paragraph',
+            text: `Ketentuan / Hasil yang Dikumpulkan: ${deliverable}`,
+            bold: true,
+            spacingAfter: 2,
+          });
+        }
+      } else if (inst.type === 'PORTFOLIO') {
+        if (inst.evidenceRequirements && inst.evidenceRequirements.length > 0) {
+          sections.push({
+            type: 'paragraph',
+            text: 'Dokumen / Karya yang Harus Dikumpulkan:',
+            bold: true,
+            spacingAfter: 2,
+          });
+          inst.evidenceRequirements.forEach((ev) => {
+            sections.push({
+              type: 'paragraph',
+              text: `• ${ev}`,
+              spacingAfter: 1,
+            });
+          });
+        }
+      } else if (inst.type === 'SELF_ASSESSMENT' || inst.type === 'PEER_ASSESSMENT') {
+        if (inst.selfPeerItems && inst.selfPeerItems.length > 0) {
+          sections.push({
+            type: 'paragraph',
+            text: 'Pernyataan Penilaian:',
+            bold: true,
+            spacingAfter: 2,
+          });
+          inst.selfPeerItems.forEach((it) => {
+            sections.push({
+              type: 'paragraph',
+              text: `${it.no}. ${it.statement}`,
+              spacingAfter: 2,
+            });
+          });
+        }
+      }
+    });
+
+    for (const sec of sections) {
+      if (sec.type === 'heading') {
+        builder.renderHeading(sec.text, sec.level);
+      } else if (sec.type === 'paragraph') {
+        builder.renderParagraph(sec.text, {
+          bold: sec.bold,
+          align: sec.align,
+          spacingAfter: sec.spacingAfter,
+        });
+      } else if (sec.type === 'callout') {
+        builder.renderCallout(sec.text, sec.title);
+      } else if (sec.type === 'table') {
+        builder.renderTable(sec);
+      }
+    }
+
+    return builder.getBlob();
+  }
+
+  if (projection === 'SCORING_GUIDE') {
+    // ==========================================
+    // PROJECTION: PANDUAN PENILAIAN & RUBRIK
+    // ==========================================
+    builder.renderHeader('PANDUAN PENILAIAN & RUBRIK ASESMEN', model.metadata.subTitle);
+    builder.renderNormalizedIdentityBlock(model.metadata, extraIdentityRows);
+
+    if (model.answerKeys.list.length > 0) {
+      sections.push({
+        type: 'heading',
+        text: 'I. Kunci Jawaban Soal Tertulis',
+        level: 2,
+      });
+
+      sections.push({
+        type: 'table',
+        columns: [
+          { header: 'No. Butir', dataKey: 'itemNumber', width: 12, align: 'center' },
+          { header: 'Bentuk Soal', dataKey: 'instrumentType', width: 20, align: 'center' },
+          { header: 'Kunci / Jawaban yang Diharapkan', dataKey: 'value', width: 40, align: 'left' },
+          { header: 'Keterangan / Penjelasan', dataKey: 'notes', width: 28, align: 'left' },
+        ],
+        rows: model.answerKeys.list.map((ak) => [
+          ak.itemNumber ?? '-',
+          ak.instrumentType,
+          ak.value || '-',
+          ak.notes || '-',
+        ]),
+      });
+    }
+
+    if (model.scoringGuides.list.length > 0) {
+      sections.push({
+        type: 'heading',
+        text: 'II. Pedoman Penskoran Uraian / Non-Objektif',
+        level: 2,
+      });
+
+      model.scoringGuides.list.forEach((sg, sgIdx) => {
+        sections.push({
+          type: 'paragraph',
+          text: `${sgIdx + 1}. ${sg.title} [Skor Maksimum: ${sg.maxScore ?? '-'}]`,
+          bold: true,
+          spacingAfter: 1,
+        });
+        if (sg.instructions) {
+          sections.push({
+            type: 'paragraph',
+            text: sg.instructions,
+            align: 'justify',
+            spacingAfter: 2,
+          });
+        }
+        if (sg.notes) {
+          sections.push({
+            type: 'paragraph',
+            text: `Catatan: ${sg.notes}`,
+            spacingAfter: 2,
+          });
+        }
+      });
+    }
+
+    if (model.rubrics.list.length > 0) {
+      sections.push({
+        type: 'heading',
+        text: 'III. Rubrik Penilaian Kinerja / Produk / Proyek',
+        level: 2,
+      });
+
+      model.rubrics.list.forEach((rub, rIdx) => {
+        sections.push({
+          type: 'paragraph',
+          text: `${rIdx + 1}. ${rub.title}`,
+          bold: true,
+          spacingAfter: 2,
+        });
+
+        const cols: (string | PdfTableColumn)[] = [
+          { header: 'Kriteria Penilaian', dataKey: 'crit', width: 30, align: 'left' },
+          ...rub.scale.map((s, sIdx) => ({
+            header: s.score !== undefined ? `${s.label} (${s.score})` : s.label,
+            dataKey: `scale_${sIdx}`,
+            align: 'left' as const,
+          })),
+        ];
+
+        const rows = rub.criteria.map((c) => [
+          c.weight !== undefined ? `${c.label} — Bobot: ${c.weight}` : c.label,
+          ...c.descriptors,
+        ]);
+
+        sections.push({
+          type: 'table',
+          columns: cols,
+          rows,
+        });
+      });
+    }
+
+    const obsInsts = model.instruments.list.filter((i) => i.type === 'OBSERVATION' && i.observationAspects && i.observationAspects.length > 0);
+    if (obsInsts.length > 0) {
+      sections.push({
+        type: 'heading',
+        text: 'IV. Pedoman Observasi',
+        level: 2,
+      });
+      obsInsts.forEach((inst) => {
+        if (inst.recordingScheme) {
+          sections.push({
+            type: 'paragraph',
+            text: `Skema Pencatatan: ${inst.recordingScheme}`,
+            spacingAfter: 2,
+          });
+        }
+        if (inst.observationAspects && inst.observationAspects.length > 0) {
+          sections.push({
+            type: 'table',
+            columns: [
+              { header: 'No', dataKey: 'no', width: 10, align: 'center' },
+              { header: 'Aspek Pengamatan', dataKey: 'aspect', width: 45, align: 'left' },
+              { header: 'Indikator Perilaku', dataKey: 'indicator', width: 45, align: 'left' },
+            ],
+            rows: inst.observationAspects.map((asp, aIdx) => [
+              aIdx + 1,
+              asp.label,
+              asp.indicator || '-',
+            ]),
+          });
+        }
+      });
+    }
+
+    for (const sec of sections) {
+      if (sec.type === 'heading') {
+        builder.renderHeading(sec.text, sec.level);
+      } else if (sec.type === 'paragraph') {
+        builder.renderParagraph(sec.text, {
+          bold: sec.bold,
+          align: sec.align,
+          spacingAfter: sec.spacingAfter,
+        });
+      } else if (sec.type === 'callout') {
+        builder.renderCallout(sec.text, sec.title);
+      } else if (sec.type === 'table') {
+        builder.renderTable(sec);
+      }
+    }
+
+    builder.renderNormalizedSignatureBlock(model.signoff);
+    return builder.getBlob();
+  }
+
+  // ==========================================
+  // PROJECTION: PERANGKAT LENGKAP (COMPLETE)
+  // ==========================================
+  builder.renderHeader(model.metadata.title, model.metadata.subTitle);
+  builder.renderNormalizedIdentityBlock(model.metadata, extraIdentityRows);
 
   // SECTION I: Kisi-Kisi
   sections.push({
@@ -2131,10 +2927,6 @@ export function renderAssessmentPdf(model: NormalizedAssessmentDocument): Blob {
     });
   }
 
-  const builder = new PdfDocumentBuilder('portrait', 'FORMAL_NEUTRAL');
-  builder.renderHeader(model.metadata.title, model.metadata.subTitle);
-  builder.renderNormalizedIdentityBlock(model.metadata, extraIdentityRows);
-
   for (const sec of sections) {
     if (sec.type === 'heading') {
       builder.renderHeading(sec.text, sec.level);
@@ -2157,11 +2949,12 @@ export function renderAssessmentPdf(model: NormalizedAssessmentDocument): Blob {
 }
 
 /**
- * Generates an official, deterministic filename for exported assessment documents.
+ * Generates an official, deterministic filename for exported assessment documents according to projection.
  */
 export function generateAssessmentDocumentFileName(
   snapshot: AssessmentDocumentSnapshot,
-  extension: 'docx' | 'pdf'
+  extension: 'docx' | 'pdf',
+  projection: AssessmentDocumentProjection = 'COMPLETE'
 ): string {
   const cleanSubject = (snapshot.subject || 'Asesmen').replace(/[^a-zA-Z0-9]/g, '_');
   const cleanGrade = (snapshot.grade || '').replace(/[^a-zA-Z0-9]/g, '');
@@ -2169,6 +2962,13 @@ export function generateAssessmentDocumentFileName(
 
   if (snapshot.mode === 'BLANK_TEMPLATE' || snapshot.documentMode === 'blank') {
     return `Format_Asesmen_${cleanSubject}${gradeSuffix}_Template.${extension}`;
+  }
+
+  if (projection === 'STUDENT_INSTRUMENT') {
+    return `Lembar_Soal_${cleanSubject}${gradeSuffix}.${extension}`;
+  }
+  if (projection === 'SCORING_GUIDE') {
+    return `Panduan_Penilaian_${cleanSubject}${gradeSuffix}.${extension}`;
   }
 
   if (!isValidAssessmentPackageRevision(snapshot.assessmentPackageRevision)) {
@@ -2189,8 +2989,9 @@ export async function exportAssessmentDocx(
 ): Promise<{ blob: Blob; fileName: string; title: string; snapshot: AssessmentDocumentSnapshot }> {
   const snapshot = createAssessmentDocumentSnapshot(context, options);
   const model = buildNormalizedAssessmentDocumentModel(snapshot);
-  const blob = await renderAssessmentDocx(model);
-  const fileName = generateAssessmentDocumentFileName(snapshot, 'docx');
+  const projection = options?.projection || 'COMPLETE';
+  const blob = await renderAssessmentDocx(model, projection);
+  const fileName = generateAssessmentDocumentFileName(snapshot, 'docx', projection);
 
   return {
     blob,
@@ -2209,8 +3010,9 @@ export async function exportAssessmentPdf(
 ): Promise<{ blob: Blob; fileName: string; title: string; snapshot: AssessmentDocumentSnapshot }> {
   const snapshot = createAssessmentDocumentSnapshot(context, options);
   const model = buildNormalizedAssessmentDocumentModel(snapshot);
-  const blob = renderAssessmentPdf(model);
-  const fileName = generateAssessmentDocumentFileName(snapshot, 'pdf');
+  const projection = options?.projection || 'COMPLETE';
+  const blob = renderAssessmentPdf(model, projection);
+  const fileName = generateAssessmentDocumentFileName(snapshot, 'pdf', projection);
 
   return {
     blob,

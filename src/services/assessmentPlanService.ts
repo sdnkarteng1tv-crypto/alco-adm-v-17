@@ -45,6 +45,7 @@ export function createEmptyAssessmentPlan(params: {
   tpIds?: string[];
   criterionIds?: string[];
   instruments?: AssessmentInstrumentRef[];
+  requestedTotalItems?: number;
   displayLabel?: string;
   customTimingLabel?: string;
   customScopeLabel?: string;
@@ -61,6 +62,7 @@ export function createEmptyAssessmentPlan(params: {
     tpIds: params.tpIds || [],
     criterionIds: params.criterionIds || [],
     instruments: params.instruments || [],
+    requestedTotalItems: params.requestedTotalItems,
     displayLabel: params.displayLabel,
     customTimingLabel: params.customTimingLabel,
     customScopeLabel: params.customScopeLabel,
@@ -86,6 +88,7 @@ export function createAIDraftAssessmentPlan(params: {
   tpIds?: string[];
   criterionIds?: string[];
   instruments?: AssessmentInstrumentRef[];
+  requestedTotalItems?: number;
   displayLabel?: string;
 }): AssessmentPlan {
   const base = createEmptyAssessmentPlan({
@@ -117,6 +120,18 @@ export function validateAssessmentPlan(
 
   if (!plan.title || !plan.title.trim()) {
     errors.push('Judul Perangkat Asesmen wajib diisi.');
+  }
+
+  // 1b. Validate requestedTotalItems if specified
+  if (plan.requestedTotalItems !== undefined) {
+    if (
+      typeof plan.requestedTotalItems !== 'number' ||
+      !Number.isFinite(plan.requestedTotalItems) ||
+      !Number.isInteger(plan.requestedTotalItems) ||
+      plan.requestedTotalItems <= 0
+    ) {
+      errors.push('Jumlah soal harus berupa bilangan bulat positif (lebih besar dari 0).');
+    }
   }
 
   // 2. Scope constraints
@@ -576,6 +591,7 @@ export interface DeriveAutoDraftAssessmentPlanParams {
   purpose?: AssessmentPurpose;
   timing?: AssessmentTiming;
   title?: string;
+  requestedTotalItems?: number;
 }
 
 export interface DeriveAutoDraftAssessmentPlanResult {
@@ -758,6 +774,7 @@ export function deriveAutoDraftAssessmentPlan(
     tpIds: [resolvedObj.id],
     criterionIds,
     instruments: recommendedInstruments,
+    requestedTotalItems: params.requestedTotalItems,
     displayLabel: resolvedObj.code ? `Asesmen ${resolvedObj.code}` : undefined,
   });
 
