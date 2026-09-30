@@ -200,6 +200,9 @@ export interface AssessmentGenerationSpec {
   plannedInstrumentTypes: AssessmentInstrumentType[];
   sourceContext: AssessmentSourceContext[];
   requestedTotalItems?: number;
+  itemTypeDistribution?: Partial<Record<WrittenAssessmentItemType, number>>;
+  cognitiveDistribution?: Partial<Record<CognitiveDemand, number>>;
+  difficultyDistribution?: Partial<Record<AssessmentDifficultyTarget, number>>;
 
   resolution: {
     status: AssessmentGenerationResolutionStatus;
@@ -271,6 +274,7 @@ export interface AssessmentPlannedItem {
   id: string;
   sequence: number;
   coverageUnitId: string;
+  itemType?: WrittenAssessmentItemType;
   difficultyTarget?: AssessmentDifficultyTarget;
   cognitiveDemand?: CognitiveDemand;
 }

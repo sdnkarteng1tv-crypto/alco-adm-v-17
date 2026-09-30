@@ -11,6 +11,7 @@ import {
   AssessmentGenerationRule,
   AssessmentGenerationSpec,
   AssessmentInstrumentType,
+  AssessmentPlannedItem,
   AssessmentStimulusType,
   CognitiveDemand,
 } from '../types';
@@ -242,13 +243,25 @@ export function resolveAssessmentGenerationPlan(
     }
   }
 
+  const itemTypeDistribution = params.constraints?.itemTypeDistribution !== undefined
+    ? params.constraints.itemTypeDistribution
+    : spec.itemTypeDistribution;
+
+  const difficultyDistribution = params.constraints?.difficultyDistribution !== undefined
+    ? params.constraints.difficultyDistribution
+    : spec.difficultyDistribution;
+
+  const cognitiveDistribution = params.constraints?.cognitiveDistribution !== undefined
+    ? params.constraints.cognitiveDistribution
+    : spec.cognitiveDistribution;
+
   const resolvedConstraints: AssessmentGenerationConstraints = {
     assemblyMode,
     ...(durationMinutes !== undefined ? { durationMinutes } : {}),
     ...(requestedTotalItems !== undefined ? { requestedTotalItems } : {}),
-    ...(params.constraints?.itemTypeDistribution ? { itemTypeDistribution: params.constraints.itemTypeDistribution } : {}),
-    ...(params.constraints?.difficultyDistribution ? { difficultyDistribution: params.constraints.difficultyDistribution } : {}),
-    ...(params.constraints?.cognitiveDistribution ? { cognitiveDistribution: params.constraints.cognitiveDistribution } : {}),
+    ...(itemTypeDistribution ? { itemTypeDistribution } : {}),
+    ...(difficultyDistribution ? { difficultyDistribution } : {}),
+    ...(cognitiveDistribution ? { cognitiveDistribution } : {}),
   };
 
   // 3. Validasi Keberadaan Objectives
@@ -578,11 +591,22 @@ export function resolveAssessmentGenerationPlan(
     }
   }
 
-  // 5a. Validate and Allocate Item-Level Target Distributions (Difficulty & Cognitive Demand)
+  // 5a. Validate and Allocate Item-Level Target Distributions (Item Type, Difficulty & Cognitive Demand)
   const N_total = typeof finalAllocatedCount === 'number' && Number.isFinite(finalAllocatedCount) && Number.isInteger(finalAllocatedCount) && finalAllocatedCount >= 0
     ? finalAllocatedCount
     : 0;
-  const plannedItems: any[] = [];
+  const plannedItems: AssessmentPlannedItem[] = [];
+
+  if (resolvedConstraints.itemTypeDistribution && itemUnits.length > 0) {
+    const itemTypeSum = Object.values(resolvedConstraints.itemTypeDistribution).reduce((sum, val) => sum + (val || 0), 0);
+    if (itemTypeSum !== N_total) {
+      planIssues.push({
+        code: 'INVALID_ITEM_TYPE_DISTRIBUTION_SUM',
+        severity: 'BLOCKING',
+        message: `Total distribusi bentuk soal (${itemTypeSum}) tidak cocok dengan jumlah soal yang diminta/dialokasikan (${N_total}).`,
+      });
+    }
+  }
 
   if (resolvedConstraints.difficultyDistribution && itemUnits.length > 0) {
     const diffSum = Object.values(resolvedConstraints.difficultyDistribution).reduce((sum, val) => sum + (val || 0), 0);
@@ -622,6 +646,36 @@ export function resolveAssessmentGenerationPlan(
     }
     if (plannedCoverageUnitIds.length > N_total) {
       plannedCoverageUnitIds.length = N_total;
+    }
+
+    // Determine itemType targets for each individual item
+    const plannedItemTypes: (import('../types').WrittenAssessmentItemType | undefined)[] = [];
+    if (resolvedConstraints.itemTypeDistribution) {
+      const typeKeys: import('../types').WrittenAssessmentItemType[] = [
+        'MULTIPLE_CHOICE',
+        'MULTIPLE_SELECT',
+        'TRUE_FALSE',
+        'MATCHING',
+        'CATEGORY_RESPONSE',
+        'SHORT_ANSWER',
+        'ESSAY',
+      ];
+      typeKeys.forEach((key) => {
+        const val = resolvedConstraints.itemTypeDistribution?.[key] || 0;
+        for (let i = 0; i < val; i++) {
+          plannedItemTypes.push(key);
+        }
+      });
+      for (let i = plannedItemTypes.length; i < N_total; i++) {
+        plannedItemTypes.push('MULTIPLE_CHOICE');
+      }
+    } else {
+      for (let i = 0; i < N_total; i++) {
+        plannedItemTypes.push('MULTIPLE_CHOICE');
+      }
+    }
+    if (plannedItemTypes.length > N_total) {
+      plannedItemTypes.length = N_total;
     }
 
     // Determine difficulty targets for each individual item
@@ -680,6 +734,7 @@ export function resolveAssessmentGenerationPlan(
         id: `planned-item-${i + 1}`,
         sequence: i + 1,
         coverageUnitId: plannedCoverageUnitIds[i],
+        itemType: plannedItemTypes[i],
         difficultyTarget: plannedDifficulties[i],
         cognitiveDemand: plannedCognitives[i],
       });

@@ -46,6 +46,10 @@ export function createEmptyAssessmentPlan(params: {
   criterionIds?: string[];
   instruments?: AssessmentInstrumentRef[];
   requestedTotalItems?: number;
+  itemTypeDistribution?: Partial<Record<import('../types').WrittenAssessmentItemType, number>>;
+  cognitiveDistribution?: Partial<Record<import('../types').CognitiveDemand, number>>;
+  difficultyDistribution?: Partial<Record<import('../types').AssessmentDifficultyTarget, number>>;
+  isTeacherCustomized?: boolean;
   displayLabel?: string;
   customTimingLabel?: string;
   customScopeLabel?: string;
@@ -63,6 +67,10 @@ export function createEmptyAssessmentPlan(params: {
     criterionIds: params.criterionIds || [],
     instruments: params.instruments || [],
     requestedTotalItems: params.requestedTotalItems,
+    itemTypeDistribution: params.itemTypeDistribution,
+    cognitiveDistribution: params.cognitiveDistribution,
+    difficultyDistribution: params.difficultyDistribution,
+    isTeacherCustomized: params.isTeacherCustomized,
     displayLabel: params.displayLabel,
     customTimingLabel: params.customTimingLabel,
     customScopeLabel: params.customScopeLabel,
@@ -89,6 +97,10 @@ export function createAIDraftAssessmentPlan(params: {
   criterionIds?: string[];
   instruments?: AssessmentInstrumentRef[];
   requestedTotalItems?: number;
+  itemTypeDistribution?: Partial<Record<import('../types').WrittenAssessmentItemType, number>>;
+  cognitiveDistribution?: Partial<Record<import('../types').CognitiveDemand, number>>;
+  difficultyDistribution?: Partial<Record<import('../types').AssessmentDifficultyTarget, number>>;
+  isTeacherCustomized?: boolean;
   displayLabel?: string;
 }): AssessmentPlan {
   const base = createEmptyAssessmentPlan({
@@ -131,6 +143,78 @@ export function validateAssessmentPlan(
       plan.requestedTotalItems <= 0
     ) {
       errors.push('Jumlah soal harus berupa bilangan bulat positif (lebih besar dari 0).');
+    } else if (plan.requestedTotalItems > 100) {
+      errors.push('Jumlah soal tidak boleh melebihi 100 butir.');
+    }
+
+    // Validate itemTypeDistribution
+    if (plan.itemTypeDistribution) {
+      let sumItemType = 0;
+      let hasInvalidValue = false;
+      for (const [key, val] of Object.entries(plan.itemTypeDistribution)) {
+        if (typeof val === 'number') {
+          if (!Number.isInteger(val) || val < 0) {
+            hasInvalidValue = true;
+          }
+          sumItemType += val;
+        }
+      }
+      if (hasInvalidValue) {
+        errors.push('Jumlah per bentuk soal harus berupa bilangan bulat tidak negatif (>= 0).');
+      } else if (sumItemType !== plan.requestedTotalItems) {
+        errors.push(
+          `Total rincian bentuk soal (${sumItemType}) harus sama persis dengan target total soal (${plan.requestedTotalItems}).`
+        );
+      }
+    }
+
+    // Validate cognitiveDistribution
+    if (plan.cognitiveDistribution) {
+      let sumCog = 0;
+      let hasInvalidCog = false;
+      for (const [key, val] of Object.entries(plan.cognitiveDistribution)) {
+        if (typeof val === 'number') {
+          if (!Number.isInteger(val) || val < 0) {
+            hasInvalidCog = true;
+          }
+          sumCog += val;
+        }
+      }
+      if (hasInvalidCog) {
+        errors.push('Jumlah sebaran kognitif harus berupa bilangan bulat tidak negatif (>= 0).');
+      } else if (sumCog !== plan.requestedTotalItems) {
+        errors.push(
+          `Total sebaran kognitif (${sumCog}) harus sama persis dengan target total soal (${plan.requestedTotalItems}).`
+        );
+      }
+    }
+
+    // Validate difficultyDistribution
+    if (plan.difficultyDistribution) {
+      let sumDiff = 0;
+      let hasInvalidDiff = false;
+      for (const [key, val] of Object.entries(plan.difficultyDistribution)) {
+        if (typeof val === 'number') {
+          if (!Number.isInteger(val) || val < 0) {
+            hasInvalidDiff = true;
+          }
+          sumDiff += val;
+        }
+      }
+      if (hasInvalidDiff) {
+        errors.push('Jumlah sebaran tingkat kesulitan harus berupa bilangan bulat tidak negatif (>= 0).');
+      } else if (sumDiff !== plan.requestedTotalItems) {
+        errors.push(
+          `Total sebaran tingkat kesulitan (${sumDiff}) harus sama persis dengan target total soal (${plan.requestedTotalItems}).`
+        );
+      }
+    }
+
+    // Warning if total questions < total measured TPs
+    if (plan.tpIds && plan.tpIds.length > 0 && plan.requestedTotalItems < plan.tpIds.length) {
+      warnings.push(
+        `Jumlah soal (${plan.requestedTotalItems}) lebih sedikit dari jumlah TP (${plan.tpIds.length}). Beberapa TP mungkin tidak terwakili.`
+      );
     }
   }
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   FileCheck,
   Plus,
@@ -16,6 +16,7 @@ import {
   Search,
   Filter,
   Info,
+  Sliders,
 } from 'lucide-react';
 import {
   SchoolData,
@@ -45,6 +46,10 @@ import {
   deriveAutoDraftAssessmentPlan,
   getInstrumentLabel,
 } from '../../services/assessmentPlanService';
+import {
+  generateAssessmentRecommendation,
+  AssessmentRecommendation,
+} from '../../services/assessmentRecommendationService';
 import { resolveAssessmentAlias } from '../../services/assessmentTypeResolver';
 import { isMerdeka, isK13 } from '../../services/curriculumRouter';
 
@@ -396,6 +401,31 @@ export const AssessmentPlanManager: React.FC<AssessmentPlanManagerProps> = ({
       setFormCriterionIds([...formCriterionIds, criterionId]);
     }
   };
+
+  // Assessment Recommendation Engine v1 (Deterministic & Rule-Based)
+  const liveRecommendation = useMemo(() => {
+    return generateAssessmentRecommendation({
+      academicSetting,
+      purpose: formPurpose,
+      timing: formTiming,
+      scopeType: formScope,
+      title: formTitle,
+      tpIds: formTpIds,
+      availableObjectives,
+      instruments: formInstruments,
+      requestedTotalItems: formRequestedTotalItems,
+    });
+  }, [
+    academicSetting,
+    formPurpose,
+    formTiming,
+    formScope,
+    formTitle,
+    formTpIds,
+    availableObjectives,
+    formInstruments,
+    formRequestedTotalItems,
+  ]);
 
   // Live Validation Object
   const currentFormPlan: AssessmentPlan = {
@@ -1106,28 +1136,123 @@ export const AssessmentPlanManager: React.FC<AssessmentPlanManagerProps> = ({
                 </div>
 
                 {formInstruments.some((i) => i.type === 'WRITTEN_TEST') && (
-                  <div className="mt-2.5 p-3 bg-indigo-50/80 border border-indigo-200 rounded-xl space-y-2">
+                  <div className="mt-2.5 p-3.5 bg-gradient-to-br from-indigo-50/90 to-slate-50 border border-indigo-200/90 rounded-xl space-y-3">
                     <div className="flex items-center justify-between">
                       <label className="font-semibold text-slate-800 text-xs flex items-center gap-1.5">
-                        <span>Jumlah Soal (Tes Tertulis)</span>
+                        <Sliders className="w-3.5 h-3.5 text-indigo-600" />
+                        <span>Konfigurasi Butir Soal (Tes Tertulis)</span>
                         <span className="text-[10px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-medium border border-indigo-200">
-                          Konfigurasi Butir
+                          Recommendation Engine v1
                         </span>
                       </label>
-                      <span className="text-[11px] text-indigo-900 font-medium">
+                      <span className="text-[11px] text-indigo-900 font-bold">
                         {formRequestedTotalItems !== undefined
                           ? `${formRequestedTotalItems} butir soal`
-                          : 'Default: proporsional terhadap TP'}
+                          : liveRecommendation
+                          ? `Rekomendasi: ${liveRecommendation.totalItems} butir`
+                          : 'Proporsional TP'}
                       </span>
                     </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <div className="flex items-center gap-1">
-                        <span className="text-xs text-slate-600 font-medium">Jumlah:</span>
+
+                    {/* Recommendation Insights Card */}
+                    {liveRecommendation && (
+                      <div className="p-2.5 bg-white/90 border border-indigo-100 rounded-lg space-y-2 text-xs">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-semibold text-indigo-900 flex items-center gap-1">
+                            <Sparkles className="w-3 h-3 text-indigo-600" />
+                            Rekomendasi Baseline: {liveRecommendation.totalItems} Soal ({liveRecommendation.gradeBracket})
+                          </span>
+                          {formRequestedTotalItems !== liveRecommendation.totalItems && (
+                            <button
+                              type="button"
+                              onClick={() => setFormRequestedTotalItems(liveRecommendation.totalItems)}
+                              className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-2 py-0.5 rounded-md transition-colors"
+                            >
+                              Gunakan Rekomendasi ({liveRecommendation.totalItems})
+                            </button>
+                          )}
+                        </div>
+
+                        <p className="text-[11px] text-slate-600 italic">
+                          {liveRecommendation.rationale}
+                        </p>
+
+                        {/* Distribution Chips */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-2 pt-1 border-t border-slate-100">
+                          {/* Item Types */}
+                          <div className="bg-slate-50 p-2 rounded-md border border-slate-200/60">
+                            <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                              Bentuk Soal
+                            </div>
+                            <div className="space-y-0.5">
+                              {liveRecommendation.itemTypeRecommendations.map((r) => (
+                                <div key={r.type} className="flex justify-between text-[11px] text-slate-700">
+                                  <span>{r.label}:</span>
+                                  <span className="font-semibold text-indigo-950">
+                                    {r.count} ({r.percentage}%)
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Cognitive */}
+                          <div className="bg-slate-50 p-2 rounded-md border border-slate-200/60">
+                            <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                              Tuntutan Kognitif
+                            </div>
+                            <div className="space-y-0.5">
+                              {liveRecommendation.cognitiveRecommendations.map((r) => (
+                                <div key={r.demand} className="flex justify-between text-[11px] text-slate-700">
+                                  <span className="truncate pr-1">{r.label.split(' ')[0]}:</span>
+                                  <span className="font-semibold text-indigo-950">
+                                    {r.count} ({r.percentage}%)
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Difficulty */}
+                          <div className="bg-slate-50 p-2 rounded-md border border-slate-200/60">
+                            <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                              Tingkat Kesulitan
+                            </div>
+                            <div className="space-y-0.5">
+                              {liveRecommendation.difficultyRecommendations.map((r) => (
+                                <div key={r.difficulty} className="flex justify-between text-[11px] text-slate-700">
+                                  <span>{r.label.split(' ')[0]}:</span>
+                                  <span className="font-semibold text-indigo-950">
+                                    {r.count} ({r.percentage}%)
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Warnings if any */}
+                        {liveRecommendation.warnings && liveRecommendation.warnings.length > 0 && (
+                          <div className="mt-1 p-1.5 bg-amber-50 border border-amber-200 rounded text-[11px] text-amber-800 space-y-0.5">
+                            {liveRecommendation.warnings.map((w, i) => (
+                              <div key={i} className="flex items-start gap-1">
+                                <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+                                <span>{w}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="flex flex-wrap items-center gap-2 pt-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs text-slate-700 font-semibold">Jumlah Soal Kustom:</span>
                         <input
                           type="number"
                           min="1"
                           max="100"
-                          placeholder="20"
+                          placeholder={liveRecommendation ? String(liveRecommendation.totalItems) : '20'}
                           value={formRequestedTotalItems !== undefined ? formRequestedTotalItems : ''}
                           onChange={(e) => {
                             const val = e.target.value.trim();
@@ -1138,12 +1263,12 @@ export const AssessmentPlanManager: React.FC<AssessmentPlanManagerProps> = ({
                               setFormRequestedTotalItems(isNaN(num) ? undefined : num);
                             }
                           }}
-                          className="w-24 bg-white border border-slate-300 rounded-lg px-2.5 py-1 text-xs text-slate-800 font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                          className="w-20 bg-white border border-slate-300 rounded-lg px-2.5 py-1 text-xs text-slate-900 font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500"
                         />
                       </div>
                       <div className="flex items-center gap-1">
-                        <span className="text-[11px] text-slate-500">Preset:</span>
-                        {[5, 10, 15, 20, 25].map((preset) => (
+                        <span className="text-[11px] text-slate-500">Preset Cepat:</span>
+                        {[5, 10, 15, 20, 25, 30, 35, 40].map((preset) => (
                           <button
                             key={preset}
                             type="button"
@@ -1169,7 +1294,7 @@ export const AssessmentPlanManager: React.FC<AssessmentPlanManagerProps> = ({
                       </div>
                     </div>
                     <p className="text-[10px] text-slate-500">
-                      Rencana butir soal akan diteruskan tepat sejumlah target ke kisi-kisi dan generator instrumen.
+                      Rencana butir soal akan diteruskan secara kanonikal ke kisi-kisi dan generator instrumen tanpa distorsi.
                     </p>
                   </div>
                 )}

@@ -461,6 +461,9 @@ export function resolveAssessmentGenerationSpec(
     plannedInstrumentTypes,
     sourceContext,
     requestedTotalItems: assessmentPlan?.requestedTotalItems,
+    itemTypeDistribution: assessmentPlan?.itemTypeDistribution,
+    cognitiveDistribution: assessmentPlan?.cognitiveDistribution,
+    difficultyDistribution: assessmentPlan?.difficultyDistribution,
     resolution: {
       status,
       issues,

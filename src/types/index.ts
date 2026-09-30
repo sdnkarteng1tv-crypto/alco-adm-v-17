@@ -950,6 +950,10 @@ export interface AssessmentPlan {
 
   instruments: AssessmentInstrumentRef[];
   requestedTotalItems?: number;
+  itemTypeDistribution?: Partial<Record<WrittenAssessmentItemType, number>>;
+  cognitiveDistribution?: Partial<Record<CognitiveDemand, number>>;
+  difficultyDistribution?: Partial<Record<AssessmentDifficultyTarget, number>>;
+  isTeacherCustomized?: boolean;
 
   displayLabel?: string;
   customTimingLabel?: string;
