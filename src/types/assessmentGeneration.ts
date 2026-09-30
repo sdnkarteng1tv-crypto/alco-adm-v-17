@@ -394,6 +394,8 @@ export interface GeneratedAssessmentUnitBase {
   indicatorSource?: AssessmentGeneratedContentSource;
   materialOrContext?: string;
   materialSource?: AssessmentGeneratedContentSource;
+  plannedItemId?: string;
+  sequence?: number;
 }
 
 export interface GeneratedItemUnit extends GeneratedAssessmentUnitBase {

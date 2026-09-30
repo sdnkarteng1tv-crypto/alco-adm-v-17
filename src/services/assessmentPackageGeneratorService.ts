@@ -18,6 +18,7 @@ import {
   AssessmentInstrument,
   AssessmentInstrumentType,
   AssessmentPackage,
+  AssessmentPlannedItem,
   AssessmentRubric,
   AssessmentScoringGuide,
   AssessmentStimulusOrigin,
@@ -494,6 +495,7 @@ ATURAN GENERASI KETAT:
    - JANGAN mengubah jumlah butir/tugas (requiredCount). Hasilkan PERSIS sesuai requiredCount.
    - JANGAN mengklaim konten sintetis buatan AI sebagai dokumen resmi (OFFICIAL) atau regulasi pemerintah.
    - JANGAN menandai draf sebagai SIAP atau FINAL (seluruh keluaran adalah DRAFT).
+   - UNTUK TES TERTULIS (WRITTEN_TEST): Rencana butir soal (plannedItems) bersifat AUTHORITATIVE. Setiap plannedItem menentukan TEPAT: sequence, coverageUnitId, itemType, cognitiveDemand, dan difficultyTarget. AI DILARANG menentukan ulang atau mengacak distribusi bentuk soal / kognitif / kesulitan. AI WAJIB menghasilkan 1 item untuk setiap plannedItem persis sesuai targetnya.
 
 2. SEMANTIK ALOKASI & KONTRAK FIELD OUTPUT:
 
@@ -716,6 +718,25 @@ DAFTAR UNIT YANG WAJIB DIGENERASI (${contract.units.length} UNIT, TOTAL ${contra
 ${JSON.stringify(contract.units, null, 2)}
 
 ${
+  contract.plannedItems && contract.plannedItems.length > 0
+    ? `DAFTAR RENCANA BUTIR SOAL INDIVIDUAL TES TERTULIS (PLANNED ITEMS - TOTAL ${contract.plannedItems.length} BUTIR):
+AI WAJIB menghasilkan TEPAT ${contract.plannedItems.length} butir tes tertulis secara individual, 1-ke-1 mengikuti target tiap planned item:
+${JSON.stringify(
+  contract.plannedItems.map((pi) => ({
+    plannedItemId: pi.id,
+    sequence: pi.sequence,
+    coverageUnitId: pi.coverageUnitId,
+    itemType: pi.itemType,
+    cognitiveDemand: pi.cognitiveDemand,
+    difficultyTarget: pi.difficultyTarget,
+  })),
+  null,
+  2
+)}
+`
+    : ''
+}
+${
   contract.units.some((u) => u.allocationUnit === 'ITEM' && (u.requiredCount || 1) > 1) ||
   contract.units.reduce((s, u) => s + (u.requiredCount || 1), 0) > contract.units.length
     ? `INSTRUKSI JUMLAH BUTIR SOAL SANGAT PENTING:
@@ -795,6 +816,12 @@ export function parseAndValidateRawAIResponse(
   }
 
   const generatedCountPerCoverage = new Map<string, number>();
+
+  const hasPlannedItems = Array.isArray(contract.plannedItems) && contract.plannedItems.length > 0;
+  const plannedItemByIdMap = new Map((contract.plannedItems || []).map((p) => [p.id, p]));
+  const plannedItemBySeqMap = new Map((contract.plannedItems || []).map((p) => [p.sequence, p]));
+  const fulfilledPlannedItemIds = new Set<string>();
+  let writtenCandidateIndex = 0;
 
   candidates.forEach((candidate, idx) => {
     if (!candidate || typeof candidate !== 'object') {
@@ -950,6 +977,42 @@ export function parseAndValidateRawAIResponse(
             objectiveRefId: contractUnit.objectiveRefId,
           });
           return;
+        }
+
+        let matchedPlannedItem: AssessmentPlannedItem | undefined;
+        if (hasPlannedItems && contractUnit.instrumentType === 'WRITTEN_TEST') {
+          writtenCandidateIndex++;
+          if (candidate.plannedItemId && plannedItemByIdMap.has(candidate.plannedItemId)) {
+            matchedPlannedItem = plannedItemByIdMap.get(candidate.plannedItemId);
+          } else if (typeof candidate.sequence === 'number' && plannedItemBySeqMap.has(candidate.sequence)) {
+            matchedPlannedItem = plannedItemBySeqMap.get(candidate.sequence);
+          } else {
+            matchedPlannedItem = plannedItemBySeqMap.get(writtenCandidateIndex);
+          }
+
+          if (matchedPlannedItem) {
+            if (covId !== matchedPlannedItem.coverageUnitId) {
+              issues.push({
+                code: 'PLANNED_ITEM_COVERAGE_MISMATCH',
+                severity: 'REVIEW',
+                message: `Kandidat ITEM #${idx + 1} memiliki coverageUnitId [${covId}] berbeda dengan target plannedItem [${matchedPlannedItem.coverageUnitId}].`,
+                objectiveRefId: contractUnit.objectiveRefId,
+              });
+              return;
+            }
+
+            if (matchedPlannedItem.itemType && itemType !== matchedPlannedItem.itemType) {
+              issues.push({
+                code: 'PLANNED_ITEM_TYPE_MISMATCH',
+                severity: 'REVIEW',
+                message: `Kandidat ITEM #${idx + 1} memiliki itemType [${itemType}] berbeda dengan target plannedItem [${matchedPlannedItem.itemType}].`,
+                objectiveRefId: contractUnit.objectiveRefId,
+              });
+              return;
+            }
+
+            fulfilledPlannedItemIds.add(matchedPlannedItem.id);
+          }
         }
 
         const prompt = typeof candidate.prompt === 'string' ? candidate.prompt.trim() : '';
@@ -1176,6 +1239,8 @@ export function parseAndValidateRawAIResponse(
           indicatorSource,
           materialOrContext,
           materialSource,
+          plannedItemId: matchedPlannedItem?.id || candidate.plannedItemId,
+          sequence: matchedPlannedItem?.sequence || candidate.sequence,
         };
 
         validatedUnits.push(itemUnit);
@@ -1553,6 +1618,32 @@ export function parseAndValidateRawAIResponse(
       });
     }
   });
+
+  // Verify Planned Items for WRITTEN_TEST
+  if (hasPlannedItems) {
+    contract.plannedItems!.forEach((pi) => {
+      if (!fulfilledPlannedItemIds.has(pi.id)) {
+        if (!failedCoverageUnitIds.includes(pi.coverageUnitId)) {
+          failedCoverageUnitIds.push(pi.coverageUnitId);
+        }
+        issues.push({
+          code: 'UNFULFILLED_PLANNED_ITEM',
+          severity: 'REVIEW',
+          message: `Planned item #${pi.sequence} (${pi.itemType}) pada coverageUnit [${pi.coverageUnitId}] tidak mendapatkan hasil generasi yang valid.`,
+          objectiveRefId: contractMap.get(pi.coverageUnitId)?.objectiveRefId,
+        });
+      }
+    });
+
+    const validatedWrittenCount = validatedUnits.filter((u) => u.instrumentType === 'WRITTEN_TEST').length;
+    if (validatedWrittenCount !== contract.plannedItems!.length) {
+      issues.push({
+        code: 'PLANNED_ITEMS_COUNT_MISMATCH',
+        severity: 'REVIEW',
+        message: `Jumlah hasil tes tertulis (${validatedWrittenCount}) tidak sesuai dengan target planned items (${contract.plannedItems!.length}).`,
+      });
+    }
+  }
 
   return { validatedUnits, failedCoverageUnitIds, issues };
 }
