@@ -78,9 +78,10 @@ export const DIFFICULTY_LABELS: Record<AssessmentDifficultyTarget, string> = {
 
 /**
  * Resolves school grade bracket deterministically.
+ * Returns undefined if level/grade/phase cannot be resolved safely (Fail-Closed).
  */
-export function resolveGradeBracket(setting?: AcademicSetting): GradeBracket {
-  if (!setting) return 'SD_MIDDLE';
+export function resolveGradeBracket(setting?: AcademicSetting): GradeBracket | undefined {
+  if (!setting) return undefined;
 
   const level = (setting.level || '').toUpperCase();
   const gradeStr = String(setting.grade || '').trim();
@@ -107,9 +108,17 @@ export function resolveGradeBracket(setting?: AcademicSetting): GradeBracket {
   if (phase === 'C' || gradeStr === '5' || gradeStr === '6' || gradeStr.includes('Kelas 5') || gradeStr.includes('Kelas 6')) {
     return 'SD_UPPER';
   }
+  if (phase === 'B' || gradeStr === '3' || gradeStr === '4' || gradeStr.includes('Kelas 3') || gradeStr.includes('Kelas 4')) {
+    return 'SD_MIDDLE';
+  }
 
-  // Default SD 3-4 / Fase B
-  return 'SD_MIDDLE';
+  // If level is explicitly SD but no specific grade/phase, resolve to SD_MIDDLE
+  if (level === 'SD') {
+    return 'SD_MIDDLE';
+  }
+
+  // Fail-Closed: do not assume SD_MIDDLE when setting is unknown or empty
+  return undefined;
 }
 
 /**
@@ -494,6 +503,11 @@ export function generateAssessmentRecommendation(params: {
   const purpose = params.purpose || 'FORMATIVE';
   const scopeType = params.scopeType || 'TP';
   const gradeBracket = resolveGradeBracket(params.academicSetting);
+
+  // If grade bracket cannot be resolved deterministically, fail closed and do not assume arbitrary SD values
+  if (!gradeBracket) {
+    return null;
+  }
 
   // Baseline or teacher requested total
   const totalItems =

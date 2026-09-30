@@ -17,6 +17,9 @@ import {
   Filter,
   Info,
   Sliders,
+  ChevronDown,
+  ChevronUp,
+  RefreshCw,
 } from 'lucide-react';
 import {
   SchoolData,
@@ -34,6 +37,9 @@ import {
   AssessmentInstrumentType,
   AssessmentInstrumentRef,
   Assessment,
+  WrittenAssessmentItemType,
+  CognitiveDemand,
+  AssessmentDifficultyTarget,
 } from '../../types';
 import {
   createEmptyAssessmentPlan,
@@ -49,6 +55,10 @@ import {
 import {
   generateAssessmentRecommendation,
   AssessmentRecommendation,
+  ITEM_TYPE_LABELS,
+  COGNITIVE_LABELS,
+  DIFFICULTY_LABELS,
+  allocateIntegerDistribution,
 } from '../../services/assessmentRecommendationService';
 import { resolveAssessmentAlias } from '../../services/assessmentTypeResolver';
 import { isMerdeka, isK13 } from '../../services/curriculumRouter';
@@ -115,6 +125,11 @@ export const AssessmentPlanManager: React.FC<AssessmentPlanManagerProps> = ({
   const [formCriterionIds, setFormCriterionIds] = useState<string[]>([]);
   const [formInstruments, setFormInstruments] = useState<AssessmentInstrumentRef[]>([]);
   const [formRequestedTotalItems, setFormRequestedTotalItems] = useState<number | undefined>(undefined);
+  const [formItemTypeDistribution, setFormItemTypeDistribution] = useState<Record<WrittenAssessmentItemType, number> | undefined>(undefined);
+  const [formCognitiveDistribution, setFormCognitiveDistribution] = useState<Record<CognitiveDemand, number> | undefined>(undefined);
+  const [formDifficultyDistribution, setFormDifficultyDistribution] = useState<Record<AssessmentDifficultyTarget, number> | undefined>(undefined);
+  const [formIsTeacherCustomized, setFormIsTeacherCustomized] = useState<boolean | undefined>(undefined);
+  const [isCustomizingDistribution, setIsCustomizingDistribution] = useState<boolean>(false);
   const [aliasNotification, setAliasNotification] = useState<string | null>(null);
 
   // Available Objectives (Merdeka TPs or K13 KDs)
@@ -206,6 +221,11 @@ export const AssessmentPlanManager: React.FC<AssessmentPlanManagerProps> = ({
     setFormInstruments(initialInstruments);
     setFormCriterionIds(initialCriterionIds);
     setFormRequestedTotalItems(undefined);
+    setFormItemTypeDistribution(undefined);
+    setFormCognitiveDistribution(undefined);
+    setFormDifficultyDistribution(undefined);
+    setFormIsTeacherCustomized(undefined);
+    setIsCustomizingDistribution(false);
     setEditingPlan(newPlan);
     setAliasNotification(null);
     setIsModalOpen(true);
@@ -321,8 +341,22 @@ export const AssessmentPlanManager: React.FC<AssessmentPlanManagerProps> = ({
     setFormCriterionIds(plan.criterionIds || []);
     setFormInstruments(plan.instruments || []);
     setFormRequestedTotalItems(plan.requestedTotalItems);
+    setFormItemTypeDistribution(plan.itemTypeDistribution ? { ...plan.itemTypeDistribution } : undefined);
+    setFormCognitiveDistribution(plan.cognitiveDistribution ? { ...plan.cognitiveDistribution } : undefined);
+    setFormDifficultyDistribution(plan.difficultyDistribution ? { ...plan.difficultyDistribution } : undefined);
+    setFormIsTeacherCustomized(plan.isTeacherCustomized);
+    setIsCustomizingDistribution(plan.isTeacherCustomized || false);
     setAliasNotification(null);
     setIsModalOpen(true);
+  };
+
+  // Helper to apply recommendation to canonical form state
+  const applyRecommendationToForm = (rec: AssessmentRecommendation) => {
+    setFormRequestedTotalItems(rec.totalItems);
+    setFormItemTypeDistribution({ ...rec.itemTypeDistribution });
+    setFormCognitiveDistribution({ ...rec.cognitiveDistribution });
+    setFormDifficultyDistribution({ ...rec.difficultyDistribution });
+    setFormIsTeacherCustomized(false);
   };
 
   // Run Alias Resolver on Form Input
@@ -440,6 +474,10 @@ export const AssessmentPlanManager: React.FC<AssessmentPlanManagerProps> = ({
     criterionIds: formCriterionIds,
     instruments: formInstruments,
     requestedTotalItems: formRequestedTotalItems,
+    itemTypeDistribution: formItemTypeDistribution,
+    cognitiveDistribution: formCognitiveDistribution,
+    difficultyDistribution: formDifficultyDistribution,
+    isTeacherCustomized: formIsTeacherCustomized,
     displayLabel: formAlias,
     customTimingLabel: formCustomTiming,
     customScopeLabel: formCustomScope,
@@ -1142,7 +1180,7 @@ export const AssessmentPlanManager: React.FC<AssessmentPlanManagerProps> = ({
                         <Sliders className="w-3.5 h-3.5 text-indigo-600" />
                         <span>Konfigurasi Butir Soal (Tes Tertulis)</span>
                         <span className="text-[10px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-medium border border-indigo-200">
-                          Recommendation Engine v1
+                          {formIsTeacherCustomized ? 'Kustom Guru' : 'Recommendation Engine v1'}
                         </span>
                       </label>
                       <span className="text-[11px] text-indigo-900 font-bold">
@@ -1154,6 +1192,23 @@ export const AssessmentPlanManager: React.FC<AssessmentPlanManagerProps> = ({
                       </span>
                     </div>
 
+                    {/* Parameter Change Notice when Teacher Customized */}
+                    {formIsTeacherCustomized && liveRecommendation && formRequestedTotalItems !== liveRecommendation.totalItems && (
+                      <div className="p-2 bg-amber-50 border border-amber-200 rounded-lg flex items-center justify-between gap-2 text-xs text-amber-900">
+                        <div className="flex items-center gap-1.5">
+                          <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                          <span>Rekomendasi sistem berubah ({liveRecommendation.totalItems} butir) karena parameter asesmen disesuaikan.</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => applyRecommendationToForm(liveRecommendation)}
+                          className="px-2 py-0.5 bg-amber-600 hover:bg-amber-700 text-white font-semibold rounded text-[11px] shrink-0"
+                        >
+                          Gunakan Rekomendasi Baru
+                        </button>
+                      </div>
+                    )}
+
                     {/* Recommendation Insights Card */}
                     {liveRecommendation && (
                       <div className="p-2.5 bg-white/90 border border-indigo-100 rounded-lg space-y-2 text-xs">
@@ -1162,10 +1217,10 @@ export const AssessmentPlanManager: React.FC<AssessmentPlanManagerProps> = ({
                             <Sparkles className="w-3 h-3 text-indigo-600" />
                             Rekomendasi Baseline: {liveRecommendation.totalItems} Soal ({liveRecommendation.gradeBracket})
                           </span>
-                          {formRequestedTotalItems !== liveRecommendation.totalItems && (
+                          {(!formRequestedTotalItems || formRequestedTotalItems !== liveRecommendation.totalItems || formIsTeacherCustomized) && (
                             <button
                               type="button"
-                              onClick={() => setFormRequestedTotalItems(liveRecommendation.totalItems)}
+                              onClick={() => applyRecommendationToForm(liveRecommendation)}
                               className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-2 py-0.5 rounded-md transition-colors"
                             >
                               Gunakan Rekomendasi ({liveRecommendation.totalItems})
@@ -1189,7 +1244,10 @@ export const AssessmentPlanManager: React.FC<AssessmentPlanManagerProps> = ({
                                 <div key={r.type} className="flex justify-between text-[11px] text-slate-700">
                                   <span>{r.label}:</span>
                                   <span className="font-semibold text-indigo-950">
-                                    {r.count} ({r.percentage}%)
+                                    {formItemTypeDistribution?.[r.type] !== undefined
+                                      ? formItemTypeDistribution[r.type]
+                                      : r.count}{' '}
+                                    ({formRequestedTotalItems ? Math.round(((formItemTypeDistribution?.[r.type] ?? r.count) / formRequestedTotalItems) * 100) : r.percentage}%)
                                   </span>
                                 </div>
                               ))}
@@ -1206,7 +1264,10 @@ export const AssessmentPlanManager: React.FC<AssessmentPlanManagerProps> = ({
                                 <div key={r.demand} className="flex justify-between text-[11px] text-slate-700">
                                   <span className="truncate pr-1">{r.label.split(' ')[0]}:</span>
                                   <span className="font-semibold text-indigo-950">
-                                    {r.count} ({r.percentage}%)
+                                    {formCognitiveDistribution?.[r.demand] !== undefined
+                                      ? formCognitiveDistribution[r.demand]
+                                      : r.count}{' '}
+                                    ({formRequestedTotalItems ? Math.round(((formCognitiveDistribution?.[r.demand] ?? r.count) / formRequestedTotalItems) * 100) : r.percentage}%)
                                   </span>
                                 </div>
                               ))}
@@ -1223,7 +1284,10 @@ export const AssessmentPlanManager: React.FC<AssessmentPlanManagerProps> = ({
                                 <div key={r.difficulty} className="flex justify-between text-[11px] text-slate-700">
                                   <span>{r.label.split(' ')[0]}:</span>
                                   <span className="font-semibold text-indigo-950">
-                                    {r.count} ({r.percentage}%)
+                                    {formDifficultyDistribution?.[r.difficulty] !== undefined
+                                      ? formDifficultyDistribution[r.difficulty]
+                                      : r.count}{' '}
+                                    ({formRequestedTotalItems ? Math.round(((formDifficultyDistribution?.[r.difficulty] ?? r.count) / formRequestedTotalItems) * 100) : r.percentage}%)
                                   </span>
                                 </div>
                               ))}
@@ -1245,6 +1309,7 @@ export const AssessmentPlanManager: React.FC<AssessmentPlanManagerProps> = ({
                       </div>
                     )}
 
+                    {/* Total Question Input & Quick Presets */}
                     <div className="flex flex-wrap items-center gap-2 pt-1">
                       <div className="flex items-center gap-1.5">
                         <span className="text-xs text-slate-700 font-semibold">Jumlah Soal Kustom:</span>
@@ -1261,18 +1326,22 @@ export const AssessmentPlanManager: React.FC<AssessmentPlanManagerProps> = ({
                             } else {
                               const num = parseInt(val, 10);
                               setFormRequestedTotalItems(isNaN(num) ? undefined : num);
+                              setFormIsTeacherCustomized(true);
                             }
                           }}
                           className="w-20 bg-white border border-slate-300 rounded-lg px-2.5 py-1 text-xs text-slate-900 font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500"
                         />
                       </div>
                       <div className="flex items-center gap-1">
-                        <span className="text-[11px] text-slate-500">Preset Cepat:</span>
+                        <span className="text-[11px] text-slate-500">Preset:</span>
                         {[5, 10, 15, 20, 25, 30, 35, 40].map((preset) => (
                           <button
                             key={preset}
                             type="button"
-                            onClick={() => setFormRequestedTotalItems(preset)}
+                            onClick={() => {
+                              setFormRequestedTotalItems(preset);
+                              setFormIsTeacherCustomized(true);
+                            }}
                             className={`px-2 py-0.5 text-[11px] font-bold rounded-md border transition-colors ${
                               formRequestedTotalItems === preset
                                 ? 'bg-indigo-600 text-white border-indigo-600'
@@ -1285,7 +1354,13 @@ export const AssessmentPlanManager: React.FC<AssessmentPlanManagerProps> = ({
                         {formRequestedTotalItems !== undefined && (
                           <button
                             type="button"
-                            onClick={() => setFormRequestedTotalItems(undefined)}
+                            onClick={() => {
+                              setFormRequestedTotalItems(undefined);
+                              setFormItemTypeDistribution(undefined);
+                              setFormCognitiveDistribution(undefined);
+                              setFormDifficultyDistribution(undefined);
+                              setFormIsTeacherCustomized(undefined);
+                            }}
                             className="text-[11px] text-slate-500 hover:text-slate-800 underline ml-1"
                           >
                             Reset
@@ -1293,8 +1368,200 @@ export const AssessmentPlanManager: React.FC<AssessmentPlanManagerProps> = ({
                         )}
                       </div>
                     </div>
+
+                    {/* Button to toggle Manual Customization Accordion */}
+                    <div className="pt-2 border-t border-indigo-100 flex items-center justify-between">
+                      <button
+                        type="button"
+                        onClick={() => setIsCustomizingDistribution(!isCustomizingDistribution)}
+                        className="text-xs font-semibold text-indigo-700 hover:text-indigo-900 flex items-center gap-1"
+                      >
+                        {isCustomizingDistribution ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                        <span>{isCustomizingDistribution ? 'Sembunyikan Rincian Distribusi Manual' : 'Sesuaikan Rincian Distribusi Manual (Bentuk Soal, Kognitif, Kesulitan)'}</span>
+                      </button>
+
+                      {formRequestedTotalItems && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const total = formRequestedTotalItems;
+                            if (liveRecommendation) {
+                              const rec = generateAssessmentRecommendation({
+                                academicSetting,
+                                purpose: formPurpose,
+                                timing: formTiming,
+                                scopeType: formScope,
+                                title: formTitle,
+                                tpIds: formTpIds,
+                                availableObjectives,
+                                instruments: formInstruments,
+                                requestedTotalItems: total,
+                              });
+                              if (rec) {
+                                setFormItemTypeDistribution(rec.itemTypeDistribution);
+                                setFormCognitiveDistribution(rec.cognitiveDistribution);
+                                setFormDifficultyDistribution(rec.difficultyDistribution);
+                              }
+                            }
+                          }}
+                          className="text-[11px] text-slate-600 hover:text-indigo-600 flex items-center gap-1 font-medium"
+                        >
+                          <RefreshCw className="w-3 h-3" />
+                          <span>Auto-seimbangkan ke {formRequestedTotalItems} butir</span>
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Manual Distribution Customizer Panel */}
+                    {isCustomizingDistribution && (
+                      <div className="p-3 bg-white border border-slate-200 rounded-xl space-y-3.5 text-xs">
+                        {/* 1. Item Type Customizer */}
+                        <div>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className="font-bold text-slate-800">1. Komposisi Bentuk Soal:</span>
+                            {formRequestedTotalItems !== undefined && (
+                              <span
+                                className={`text-[11px] font-semibold px-2 py-0.5 rounded ${
+                                  (Object.values(formItemTypeDistribution || {}).reduce((a: number, b) => a + (Number(b) || 0), 0)) === formRequestedTotalItems
+                                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                    : 'bg-rose-50 text-rose-700 border border-rose-200'
+                                }`}
+                              >
+                                Total: {Object.values(formItemTypeDistribution || {}).reduce((a: number, b) => a + (Number(b) || 0), 0)} / {formRequestedTotalItems}
+                              </span>
+                            )}
+                          </div>
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                            {(
+                              [
+                                'MULTIPLE_CHOICE',
+                                'MULTIPLE_SELECT',
+                                'TRUE_FALSE',
+                                'SHORT_ANSWER',
+                                'ESSAY',
+                                'MATCHING',
+                                'CATEGORY_RESPONSE',
+                              ] as WrittenAssessmentItemType[]
+                            ).map((type) => (
+                              <div key={type} className="flex items-center justify-between p-1.5 bg-slate-50 border border-slate-200 rounded-lg">
+                                <span className="text-[11px] text-slate-700 truncate pr-1">{ITEM_TYPE_LABELS[type]}</span>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max="100"
+                                  value={formItemTypeDistribution?.[type] ?? ''}
+                                  placeholder="0"
+                                  onChange={(e) => {
+                                    const val = parseInt(e.target.value, 10);
+                                    const next = { ...(formItemTypeDistribution || {}) } as Record<WrittenAssessmentItemType, number>;
+                                    next[type] = isNaN(val) ? 0 : Math.max(0, val);
+                                    setFormItemTypeDistribution(next);
+                                    setFormIsTeacherCustomized(true);
+                                  }}
+                                  className="w-12 bg-white border border-slate-300 rounded px-1.5 py-0.5 text-center text-xs font-bold text-slate-900 focus:ring-1 focus:ring-indigo-500"
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* 2. Cognitive Demand Customizer */}
+                        <div>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className="font-bold text-slate-800">2. Sebaran Tuntutan Kognitif:</span>
+                            {formRequestedTotalItems !== undefined && (
+                              <span
+                                className={`text-[11px] font-semibold px-2 py-0.5 rounded ${
+                                  (Object.values(formCognitiveDistribution || {}).reduce((a: number, b) => a + (Number(b) || 0), 0)) === formRequestedTotalItems
+                                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                    : 'bg-rose-50 text-rose-700 border border-rose-200'
+                                }`}
+                              >
+                                Total: {Object.values(formCognitiveDistribution || {}).reduce((a: number, b) => a + (Number(b) || 0), 0)} / {formRequestedTotalItems}
+                              </span>
+                            )}
+                          </div>
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                            {(
+                              [
+                                'RECALL_UNDERSTAND',
+                                'APPLY',
+                                'ANALYZE_REASON',
+                                'EVALUATE_CREATE',
+                              ] as CognitiveDemand[]
+                            ).map((demand) => (
+                              <div key={demand} className="flex items-center justify-between p-1.5 bg-slate-50 border border-slate-200 rounded-lg">
+                                <span className="text-[11px] text-slate-700 truncate pr-1">{COGNITIVE_LABELS[demand].split(' ')[0]}</span>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max="100"
+                                  value={formCognitiveDistribution?.[demand] ?? ''}
+                                  placeholder="0"
+                                  onChange={(e) => {
+                                    const val = parseInt(e.target.value, 10);
+                                    const next = { ...(formCognitiveDistribution || {}) } as Record<CognitiveDemand, number>;
+                                    next[demand] = isNaN(val) ? 0 : Math.max(0, val);
+                                    setFormCognitiveDistribution(next);
+                                    setFormIsTeacherCustomized(true);
+                                  }}
+                                  className="w-12 bg-white border border-slate-300 rounded px-1.5 py-0.5 text-center text-xs font-bold text-slate-900 focus:ring-1 focus:ring-indigo-500"
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* 3. Difficulty Target Customizer */}
+                        <div>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className="font-bold text-slate-800">3. Sebaran Tingkat Kesulitan:</span>
+                            {formRequestedTotalItems !== undefined && (
+                              <span
+                                className={`text-[11px] font-semibold px-2 py-0.5 rounded ${
+                                  (Object.values(formDifficultyDistribution || {}).reduce((a: number, b) => a + (Number(b) || 0), 0)) === formRequestedTotalItems
+                                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                    : 'bg-rose-50 text-rose-700 border border-rose-200'
+                                }`}
+                              >
+                                Total: {Object.values(formDifficultyDistribution || {}).reduce((a: number, b) => a + (Number(b) || 0), 0)} / {formRequestedTotalItems}
+                              </span>
+                            )}
+                          </div>
+                          <div className="grid grid-cols-3 gap-2">
+                            {(
+                              [
+                                'BASIC',
+                                'MODERATE',
+                                'CHALLENGING',
+                              ] as AssessmentDifficultyTarget[]
+                            ).map((diff) => (
+                              <div key={diff} className="flex items-center justify-between p-1.5 bg-slate-50 border border-slate-200 rounded-lg">
+                                <span className="text-[11px] text-slate-700">{DIFFICULTY_LABELS[diff].split(' ')[0]}</span>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max="100"
+                                  value={formDifficultyDistribution?.[diff] ?? ''}
+                                  placeholder="0"
+                                  onChange={(e) => {
+                                    const val = parseInt(e.target.value, 10);
+                                    const next = { ...(formDifficultyDistribution || {}) } as Record<AssessmentDifficultyTarget, number>;
+                                    next[diff] = isNaN(val) ? 0 : Math.max(0, val);
+                                    setFormDifficultyDistribution(next);
+                                    setFormIsTeacherCustomized(true);
+                                  }}
+                                  className="w-12 bg-white border border-slate-300 rounded px-1.5 py-0.5 text-center text-xs font-bold text-slate-900 focus:ring-1 focus:ring-indigo-500"
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                     <p className="text-[10px] text-slate-500">
-                      Rencana butir soal akan diteruskan secara kanonikal ke kisi-kisi dan generator instrumen tanpa distorsi.
+                      Rencana butir soal dan rincian distribusi akan diteruskan secara kanonikal ke kisi-kisi dan generator instrumen tanpa distorsi.
                     </p>
                   </div>
                 )}

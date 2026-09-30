@@ -277,6 +277,109 @@ assert(genPlan.plannedItems?.length === 20, `GenerationPlan must produce exactly
 
 console.log('✅ Teacher override passes completely to GenerationPlan plannedItems.');
 
+// 7. Fail-Closed on Unresolved Academic Setting
+console.log('\n--- 7. Fail-Closed on Unresolved Academic Setting ---');
+const unknownSetting: AcademicSetting = {
+  id: 'set-unknown',
+  profileId: 'prof-1',
+  academicYear: '2025/2026',
+  grade: '',
+  phase: '',
+  level: '',
+  subject: 'Umum',
+  curriculum: '',
+  updatedAt: '',
+};
+assert(resolveGradeBracket(unknownSetting) === undefined, 'Unknown setting must return undefined grade bracket');
+assert(
+  generateAssessmentRecommendation({
+    academicSetting: unknownSetting,
+    instruments: [{ id: 'inst-1', type: 'WRITTEN_TEST', label: 'Tes Tertulis' }],
+  }) === null,
+  'Unknown setting must return null recommendation (Fail-Closed)'
+);
+console.log('✅ Fail-closed verified on unknown setting.');
+
+// 8. End-to-End SAS Grade 5 Exact Distribution Flow
+console.log('\n--- 8. End-to-End SAS Grade 5 Exact Distribution Flow ---');
+const sasPlan: AssessmentPlan = {
+  id: 'asp-sas-sd5',
+  academicSettingId: sdUpperSetting.id,
+  title: 'Sumatif Akhir Semester (SAS) Matematika Kelas 5',
+  purpose: 'SUMMATIVE',
+  timing: 'END_SEMESTER',
+  scopeType: 'SEMESTER',
+  tpIds: ['tp-1', 'tp-2'],
+  criterionIds: ['crit-1', 'crit-2'],
+  instruments: [{ id: 'inst-1', type: 'WRITTEN_TEST', label: 'Tes Tertulis' }],
+  requestedTotalItems: 40,
+  itemTypeDistribution: {
+    MULTIPLE_CHOICE: 22,
+    MULTIPLE_SELECT: 6,
+    TRUE_FALSE: 0,
+    MATCHING: 0,
+    CATEGORY_RESPONSE: 0,
+    SHORT_ANSWER: 6,
+    ESSAY: 6,
+  },
+  cognitiveDistribution: {
+    RECALL_UNDERSTAND: 12,
+    APPLY: 18,
+    ANALYZE_REASON: 10,
+    EVALUATE_CREATE: 0,
+  },
+  difficultyDistribution: {
+    BASIC: 10,
+    MODERATE: 20,
+    CHALLENGING: 10,
+  },
+  isTeacherCustomized: false,
+  workflowStatus: 'SIAP',
+  createdAt: '2025-10-01',
+  updatedAt: '2025-10-01',
+};
+
+const sasSpec = resolveAssessmentGenerationSpec({
+  assessmentPlan: sasPlan,
+  academicSetting: sdUpperSetting,
+  tp: {
+    id: 'tp-data-1',
+    academicSettingId: sdUpperSetting.id,
+    workflowStatus: 'SIAP',
+    updatedAt: '',
+    items: [
+      { id: 'tp-1', code: 'TP.1', competence: 'Menganalisis', contentScope: 'Operasi Pecahan', statement: 'Menganalisis operasi pecahan', order: 1 },
+      { id: 'tp-2', code: 'TP.2', competence: 'Menyelesaikan masalah', contentScope: 'Kelipatan FPB KPK', statement: 'Menyelesaikan masalah FPB dan KPK', order: 2 },
+    ],
+  },
+  assessmentCriteria: [
+    { id: 'crit-1', tpId: 'tp-1', description: 'Operasi pecahan', academicSettingId: sdUpperSetting.id, approach: 'rubrik', indicators: [], levels: [], updatedAt: '' },
+    { id: 'crit-2', tpId: 'tp-2', description: 'FPB KPK', academicSettingId: sdUpperSetting.id, approach: 'rubrik', indicators: [], levels: [], updatedAt: '' },
+  ],
+});
+
+assert(sasSpec.requestedTotalItems === 40, 'SAS spec requestedTotalItems must be 40');
+assert(sasSpec.itemTypeDistribution?.MULTIPLE_CHOICE === 22, 'SAS spec MC must be 22');
+
+const sasGenPlan = resolveAssessmentGenerationPlan({
+  generationSpec: sasSpec,
+});
+
+assert(sasGenPlan.plannedItems?.length === 40, 'SAS genPlan must have exactly 40 planned items');
+
+const countByItemType = (sasGenPlan.plannedItems || []).reduce<Record<string, number>>((acc, item) => {
+  const type = item.itemType || 'UNKNOWN';
+  acc[type] = (acc[type] || 0) + 1;
+  return acc;
+}, {});
+
+assert(countByItemType.MULTIPLE_CHOICE === 22, `Planned MC must be 22, got ${countByItemType.MULTIPLE_CHOICE}`);
+assert(countByItemType.MULTIPLE_SELECT === 6, `Planned MS must be 6, got ${countByItemType.MULTIPLE_SELECT}`);
+assert(countByItemType.SHORT_ANSWER === 6, `Planned SA must be 6, got ${countByItemType.SHORT_ANSWER}`);
+assert(countByItemType.ESSAY === 6, `Planned Essay must be 6, got ${countByItemType.ESSAY}`);
+
+console.log('✅ End-to-end SAS Grade 5 exact distributions verified.');
+
 console.log('\n===============================================================');
 console.log('🎉 ALL ASSESSMENT RECOMMENDATION ENGINE V1 TESTS PASSED!');
 console.log('===============================================================');
